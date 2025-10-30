@@ -92,6 +92,7 @@ const SystemReports = () => {
                 {/* Detailed Statistics */}
                 <div className="grid grid-cols-1 gap-4 md:gap-6">
                     {/* Item Status Breakdown */}
+                    {/* Note: total_found excludes items that are archived or claimed (filtered by backend) */}
                     <div className="bg-white rounded-lg shadow-lg p-4 md:p-6">
                         <h3 className="text-base md:text-lg font-bold text-gray-900 mb-4">Item Status Breakdown</h3>
                         <div className="space-y-3">
@@ -244,9 +245,12 @@ const SystemReports = () => {
     return (
         <div className="w-full max-w-full overflow-hidden">
             {/* Header */}
+            <div className="mb-6">
+                <h2 className="text-2xl font-bold text-gray-800">System Reports</h2>
+                <p className="text-sm text-gray-500">Dashboard / Reports</p>
+            </div>
             <div className="flex flex-col md:flex-row md:justify-between md:items-center gap-3 mb-4 md:mb-6">
                 <div className="min-w-0">
-                    <h2 className="text-xl md:text-2xl lg:text-3xl font-bold text-blue-900 break-words">System Reports</h2>
                     <p className="text-sm md:text-base text-gray-600 mt-1">Analytics and Statistics</p>
                 </div>
                 <div className="flex space-x-2 md:space-x-3 flex-shrink-0">

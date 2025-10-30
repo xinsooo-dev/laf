@@ -1,148 +1,196 @@
 // src/admin/AdminLogin.jsx
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Shield, Lock, User } from 'lucide-react';
+import { Eye, EyeOff, ArrowLeft, CheckCircle, X } from 'lucide-react';
+import { API_ENDPOINTS } from '../utils/api';
 
 function AdminLogin() {
     const navigate = useNavigate();
-    const [formData, setFormData] = useState({
-        username: '',
-        password: ''
-    });
+    const [formData, setFormData] = useState({ email: '', password: '' });
+    const [loading, setLoading] = useState(false);
+    const [error, setError] = useState('');
     const [showPassword, setShowPassword] = useState(false);
+    const [showSuccessModal, setShowSuccessModal] = useState(false);
+    const [successData, setSuccessData] = useState(null);
+
+    // Set document title
+    useEffect(() => {
+        document.title = 'Admin Login - NC iFound';
+    }, []);
+
+    // Check if admin is already logged in
+    useEffect(() => {
+        const user = localStorage.getItem('user');
+        if (user) {
+            const userData = JSON.parse(user);
+            if (userData.isAdmin) {
+                navigate('/admin-dashboard', { replace: true });
+            }
+        }
+    }, [navigate]);
 
     const handleInputChange = (e) => {
-        const { name, value } = e.target;
-        setFormData(prev => ({
-            ...prev,
-            [name]: value
-        }));
+        setFormData({ ...formData, [e.target.name]: e.target.value });
     };
 
-    const handleSubmit = (e) => {
-        e.preventDefault();
+    const handleRedirect = () => {
+        navigate('/admin-dashboard', { replace: true });
+    };
 
-        // Simple admin validation (replace with real authentication)
-        if (formData.username === 'admin' && formData.password === 'admin123') {
-            console.log('Admin login successful:', formData);
-            navigate('/admin-dashboard');
-        } else {
-            alert('Invalid admin credentials! Use username: admin, password: admin123');
+    const handleSubmit = async (e) => {
+        e.preventDefault();
+        setLoading(true);
+        setError('');
+
+        try {
+            const response = await fetch(API_ENDPOINTS.AUTH.LOGIN, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    email: formData.email,
+                    password: formData.password
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                // Store admin data in localStorage
+                localStorage.setItem('user', JSON.stringify({
+                    id: data.user.id,
+                    email: data.user.email,
+                    fullName: data.user.full_name,
+                    isAdmin: true
+                }));
+
+                // Show success modal
+                setSuccessData({
+                    name: data.user.full_name,
+                    isAdmin: data.user.is_admin
+                });
+                setShowSuccessModal(true);
+            } else {
+                setError(data.message || 'Login failed');
+                window.showNotification && window.showNotification('Login failed', 'error', 3000);
+            }
+        } catch (error) {
+            console.error('Login error:', error);
+            setError('Network error. Please try again.');
+            window.showNotification && window.showNotification('Network error occurred', 'error', 3000);
+        } finally {
+            setLoading(false);
         }
     };
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-blue-900 via-blue-800 to-blue-700 flex items-center justify-center p-4 sm:p-6">
-            <div className="w-full max-w-md">
-                <div className="bg-white rounded-2xl shadow-2xl p-6 sm:p-8">
-                    {/* Header */}
-                    <div className="text-center mb-6 sm:mb-8">
-                        <div className="mx-auto w-14 h-14 sm:w-16 sm:h-16 bg-blue-100 rounded-full flex items-center justify-center mb-3 sm:mb-4">
-                            <Shield className="w-7 h-7 sm:w-8 sm:h-8 text-blue-600" />
-                        </div>
-                        <h1 className="text-xl sm:text-2xl font-bold text-gray-800 mb-2">Admin Portal</h1>
-                        <p className="text-sm sm:text-base text-gray-600">NC Lost & Found System</p>
-                        <div className="w-20 h-1 bg-blue-600 mx-auto mt-3 rounded-full"></div>
-                    </div>
+        <div style={{
+            backgroundImage: "url('/login_signup_bg.png')",
+            backgroundSize: "cover",
+            backgroundPosition: "center",
+            backgroundAttachment: "fixed"
+        }}
+            className="min-h-screen flex items-center justify-center lg:justify-end p-4 sm:p-6 md:p-12 lg:p-40 bg-gradient-to-r from-blue-400 to-blue-600 animate-fade-in">
+            <div className="w-full max-w-md lg:mr-12 animate-slide-in-right">
+                <div className="bg-white rounded-lg shadow-xl p-6 sm:p-8 transform transition-all duration-500 hover:scale-105 hover:shadow-2xl">
+                    <h2 className="text-2xl sm:text-3xl font-bold text-blue-800 mb-2 animate-fade-in-up">Login</h2>
+                    <p className="text-sm sm:text-base text-gray-500 mb-6 animate-fade-in-up animation-delay-200">Enter your account details</p>
 
-                    {/* Login Form */}
-                    <div className="space-y-4 sm:space-y-6">
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Admin Username
-                            </label>
-                            <div className="relative">
-                                <User className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
-                                <input
-                                    type="text"
-                                    name="username"
-                                    value={formData.username}
-                                    onChange={handleInputChange}
-                                    placeholder="Enter admin username"
-                                    className="w-full pl-12 pr-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all"
-                                    required
-                                />
-                            </div>
+                    <form className="space-y-4 animate-fade-in-up animation-delay-400" onSubmit={handleSubmit}>
+                        <div className="animate-fade-in-up animation-delay-500">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Email</label>
+                            <input
+                                type="email"
+                                name="email"
+                                value={formData.email}
+                                onChange={handleInputChange}
+                                placeholder="Email"
+                                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-300 hover:shadow-md focus:scale-105"
+                            />
                         </div>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700 mb-2">
-                                Admin Password
-                            </label>
+                        <div className="animate-fade-in-up animation-delay-600">
+                            <label className="block text-sm font-medium text-gray-700 mb-2">Password</label>
                             <div className="relative">
-                                <Lock className="absolute left-3 top-3 h-5 w-5 text-gray-400" />
                                 <input
                                     type={showPassword ? "text" : "password"}
                                     name="password"
                                     value={formData.password}
                                     onChange={handleInputChange}
-                                    placeholder="Enter admin password"
-                                    className="w-full pl-12 pr-12 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all"
-                                    required
+                                    placeholder="Password"
+                                    className="w-full px-4 py-3 pr-12 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-gray-50 transition-all duration-300 hover:shadow-md focus:scale-105"
                                 />
                                 <button
                                     type="button"
                                     onClick={() => setShowPassword(!showPassword)}
-                                    className="absolute right-3 top-3 text-gray-400 hover:text-gray-600"
+                                    className="absolute right-3 top-1/2 transform -translate-y-1/2 text-gray-500 hover:text-gray-700 transition-colors"
                                 >
-                                    {showPassword ? '👁️' : '🔒'}
+                                    {showPassword ? <EyeOff className="h-5 w-5" /> : <Eye className="h-5 w-5" />}
                                 </button>
                             </div>
                         </div>
 
-                        {/* Demo Credentials Info */}
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                            <h4 className="text-sm font-semibold text-blue-800 mb-2">Demo Credentials:</h4>
-                            <p className="text-sm text-blue-700">
-                                <strong>Username:</strong> admin<br />
-                                <strong>Password:</strong> admin123
-                            </p>
+                        <div className="text-right animate-fade-in-up animation-delay-700">
+                            <button
+                                type="button"
+                                onClick={() => navigate('/forgot-password')}
+                                className="text-sm text-blue-600 hover:text-blue-800 transition-all duration-200 hover:scale-105"
+                            >
+                                Forgot Password?
+                            </button>
                         </div>
+
+                        {error && (
+                            <div className="mb-4 p-3 bg-red-100 border border-red-400 text-red-700 rounded-lg animate-fade-in-up">
+                                {error}
+                            </div>
+                        )}
 
                         <button
-                            onClick={handleSubmit}
-                            className="w-full bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-6 rounded-lg transition duration-200 flex items-center justify-center gap-2"
+                            type="submit"
+                            disabled={loading}
+                            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-semibold py-3 px-6 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg animate-fade-in-up animation-delay-800 active:scale-95 disabled:cursor-not-allowed disabled:transform-none"
                         >
-                            <Shield size={20} />
-                            Access Admin Panel
+                            {loading ? 'Logging in...' : 'Login'}
                         </button>
-                    </div>
-
-                    {/* Footer */}
-                    <div className="mt-8 pt-6 border-t border-gray-200">
-                        <div className="text-center space-y-3">
-                            <button
-                                onClick={() => navigate('/')}
-                                className="text-blue-600 hover:text-blue-800 font-medium text-sm"
-                            >
-                                ← Back to Homepage
-                            </button>
-
-                            <div className="text-xs text-gray-500">
-                                <p>Authorized personnel only</p>
-                                <p>© 2025 Norzagaray College</p>
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Security Notice */}
-                    <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3">
-                        <div className="flex items-start">
-                            <div className="text-yellow-600 mr-2">⚠️</div>
-                            <div className="text-xs text-yellow-800">
-                                <strong>Security Notice:</strong> All admin activities are logged and monitored for security purposes.
-                            </div>
-                        </div>
-                    </div>
-                </div>
-
-                {/* Additional Security Features */}
-                <div className="mt-6 text-center">
-                    <div className="inline-flex items-center px-4 py-2 bg-white/10 backdrop-blur-sm rounded-full text-white text-sm">
-                        🔒 Secured by SSL Encryption
-                    </div>
+                    </form>
                 </div>
             </div>
+
+            {/* Success Modal */}
+            {showSuccessModal && successData && (
+                <div className="fixed inset-0 bg-black/50 backdrop-blur-sm z-50 flex items-center justify-center p-4 animate-fade-in">
+                    <div className="bg-white rounded-2xl shadow-2xl max-w-md w-full overflow-hidden animate-scale-in">
+                        {/* Header */}
+                        <div className="bg-gradient-to-r from-blue-500 to-blue-600 p-6 text-center">
+                            <div className="flex justify-center mb-4">
+                                <div className="bg-white rounded-full p-3 animate-bounce">
+                                    <CheckCircle className="h-12 w-12 text-blue-600" />
+                                </div>
+                            </div>
+                            <h2 className="text-2xl font-bold text-white">Login Successful!</h2>
+                        </div>
+
+                        {/* Body */}
+                        <div className="p-6 text-center">
+                            <p className="text-xl font-semibold text-gray-800 mb-2">
+                                Welcome, {successData.name}!
+                            </p>
+                            <p className="text-gray-600 mb-6">
+                                Click the button below to continue to your admin dashboard.
+                            </p>
+
+                            <button
+                                onClick={handleRedirect}
+                                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold py-3 px-8 rounded-lg transition-all duration-300 transform hover:scale-105 hover:shadow-lg"
+                            >
+                                Go to Admin Dashboard
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

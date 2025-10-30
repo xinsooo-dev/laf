@@ -1,11 +1,14 @@
 // src/admin/ManageLostFoundItems.jsx
-import React, { useState, useEffect } from 'react';
-import { Search, Filter, Eye, MapPin, Calendar, User, Package, Edit, Check, X, Maximize2, ZoomIn, ZoomOut, RefreshCw } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { Search, Eye, MapPin, Calendar, User, Package, Edit, Check, X, Maximize2, ZoomIn, ZoomOut, RefreshCw, History } from 'lucide-react';
 import { API_ENDPOINTS, getAssetUrl } from '../utils/api';
+import { PREDEFINED_LOCATIONS, LOCATION_OPTIONS, STATUS_COLORS, TYPE_COLORS } from '../utils/constants';
+import { validateFinderInfo, isCustomLocation } from '../utils/validation';
+import { SuccessModal, ErrorModal } from '../components/Modals';
 
-function ManageLostFoundItems() {
+function ManageLostFoundItems({ initialFilterType = 'all' }) {
     const [searchTerm, setSearchTerm] = useState('');
-    const [filterType, setFilterType] = useState('all');
+    const [filterType, setFilterType] = useState(initialFilterType);
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [categories, setCategories] = useState([]);
 
@@ -19,6 +22,27 @@ function ManageLostFoundItems() {
     const [zoomLevel, setZoomLevel] = useState(1);
     const [editImagePreview, setEditImagePreview] = useState(null);
     const [editImageFile, setEditImageFile] = useState(null);
+    
+    // Modal states for messages
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [showError, setShowError] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
+    
+    // Mark as Found modal states
+    const [showMarkFoundModal, setShowMarkFoundModal] = useState(false);
+    const [itemToMarkFound, setItemToMarkFound] = useState(null);
+    const [finderInfo, setFinderInfo] = useState({
+        name: '',
+        studentId: '',
+        contactInfo: '',
+        found_date: new Date().toISOString().split('T')[0],
+        found_time: new Date().toTimeString().split(' ')[0].substring(0, 5)
+    });
+
+    // History/Audit log states
+    const [itemHistory, setItemHistory] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
 
     useEffect(() => {
         fetchItems();
@@ -30,17 +54,16 @@ function ManageLostFoundItems() {
         };
 
         window.addEventListener('focus', handleFocus);
-        
-        // Set up interval to refresh data every 30 seconds
-        const interval = setInterval(() => {
-            fetchItems();
-        }, 30000);
 
         return () => {
             window.removeEventListener('focus', handleFocus);
-            clearInterval(interval);
         };
     }, []);
+
+    // Update filter when initialFilterType prop changes
+    useEffect(() => {
+        setFilterType(initialFilterType);
+    }, [initialFilterType]);
 
     const fetchCategories = async () => {
         try {
@@ -61,13 +84,23 @@ function ManageLostFoundItems() {
             const data = await response.json();
 
             if (data.success) {
+                console.log('Raw items from API:', data.items); // Debug log
+                
                 // Filter lost and found items, but exclude claimed and archived items
                 const lostFoundItems = data.items.filter(item => {
-                    const isLostOrFound = item.type === 'lost' || item.type === 'found' ||
-                                         item.status === 'lost' || item.status === 'found';
-                    const isNotClaimedOrArchived = item.status !== 'claimed' && item.status !== 'archived';
+                    const typeLower = (item.type || '').toLowerCase();
+                    const statusLower = (item.status || '').toLowerCase();
+                    
+                    const isLostOrFound = typeLower === 'lost' || typeLower === 'found' ||
+                                         statusLower === 'lost' || statusLower === 'found';
+                    const isNotClaimedOrArchived = statusLower !== 'claimed' && statusLower !== 'archived';
+                    
+                    console.log(`Item ${item.id}: type="${item.type}", status="${item.status}", isLostOrFound=${isLostOrFound}, isNotClaimedOrArchived=${isNotClaimedOrArchived}`);
+                    
                     return isLostOrFound && isNotClaimedOrArchived;
                 });
+                
+                console.log('Filtered lost/found items:', lostFoundItems);
                 setItems(lostFoundItems);
             } else {
                 console.error('Failed to fetch items:', data.message);
@@ -81,13 +114,42 @@ function ManageLostFoundItems() {
         }
     };
 
+    const fetchItemHistory = async (itemId) => {
+        setLoadingHistory(true);
+        try {
+            const response = await fetch(API_ENDPOINTS.ITEMS.HISTORY(itemId));
+            const data = await response.json();
+            
+            if (data.success) {
+                setItemHistory(data.history || []);
+            } else {
+                console.error('Failed to fetch history:', data.message);
+                setItemHistory([]);
+            }
+        } catch (error) {
+            console.error('Error fetching history:', error);
+            setItemHistory([]);
+        } finally {
+            setLoadingHistory(false);
+        }
+    };
+
     const handleView = (item) => {
         setSelectedItem(item);
         setShowModal(true);
+        // Fetch history when opening modal
+        fetchItemHistory(item.id);
     };
 
     const handleEdit = (item) => {
-        setEditingItem({ ...item });
+        // Check if location is a custom one (not in predefined list)
+        const customLocation = isCustomLocation(item.location, PREDEFINED_LOCATIONS);
+        
+        setEditingItem({ 
+            ...item, 
+            location: customLocation ? 'Others' : item.location,
+            customLocation: customLocation ? item.location : ''
+        });
         setShowEditModal(true);
     };
 
@@ -109,7 +171,8 @@ function ManageLostFoundItems() {
                 if (uploadData.success) {
                     imagePath = uploadData.filename ? `uploads/${uploadData.filename}` : null;
                 } else {
-                    alert('Failed to upload image. Proceeding without image update.');
+                    setErrorMessage('Failed to upload image. Proceeding without image update.');
+                    setShowError(true);
                 }
             }
 
@@ -119,7 +182,7 @@ function ManageLostFoundItems() {
                 body: JSON.stringify({
                     item_name: editingItem.item_name,
                     description: editingItem.description,
-                    location: editingItem.location,
+                    location: editingItem.location === 'Others' ? editingItem.customLocation : editingItem.location,
                     category: editingItem.category,
                     type: editingItem.type,
                     image_path: imagePath
@@ -132,13 +195,16 @@ function ManageLostFoundItems() {
                 setItems(prev => prev.map(item =>
                     item.id === editingItem.id ? { ...item, ...editingItem, image_path: imagePath } : item
                 ));
-                alert('Item updated successfully!');
+                setSuccessMessage('Item updated successfully!');
+                setShowSuccess(true);
                 closeEditModal();
             } else {
-                alert(`Failed to update item: ${data.message}`);
+                setErrorMessage(`Failed to update item: ${data.message}`);
+                setShowError(true);
             }
         } catch (error) {
-            alert('Network error occurred while updating item');
+            setErrorMessage('Network error occurred while updating item');
+            setShowError(true);
         }
     };
 
@@ -162,37 +228,61 @@ function ManageLostFoundItems() {
         }
     };
 
-    const handleStatusUpdate = async (itemId, newStatus) => {
+    const handleMarkAsFound = (item) => {
+        setItemToMarkFound(item);
+        setShowMarkFoundModal(true);
+    };
+
+    const closeMarkFoundModal = () => {
+        setShowMarkFoundModal(false);
+        setItemToMarkFound(null);
+        setFinderInfo({
+            name: '',
+            studentId: '',
+            contactInfo: '',
+            found_date: new Date().toISOString().split('T')[0],
+            found_time: new Date().toTimeString().split(' ')[0].substring(0, 5)
+        });
+    };
+
+    const handleSubmitMarkFound = async () => {
+        // Validate inputs
+        const validationError = validateFinderInfo(finderInfo);
+        if (validationError) {
+            setErrorMessage(validationError);
+            setShowError(true);
+            return;
+        }
+
         try {
-            const response = await fetch(API_ENDPOINTS.ITEMS.BY_ID(itemId), {
+            const response = await fetch(API_ENDPOINTS.ITEMS.BY_ID(itemToMarkFound.id), {
                 method: 'PUT',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
-                    status: newStatus
+                    type: 'found',
+                    status: 'found',
+                    finder_name: finderInfo.name,
+                    finder_student_id: finderInfo.studentId,
+                    finder_contact: finderInfo.contactInfo
                 })
             });
 
             const data = await response.json();
 
             if (data.success) {
-                // Remove item from list if it's claimed or archived
-                if (newStatus.toLowerCase() === 'claimed' || newStatus.toLowerCase() === 'archived') {
-                    setItems(prev => prev.filter(item => item.id !== itemId));
-                } else {
-                    // Update status for other changes
-                    setItems(prev => prev.map(item =>
-                        item.id === itemId ? { ...item, status: newStatus } : item
-                    ));
-                }
-                alert(`Item ${newStatus} successfully!`);
-                if (selectedItem && selectedItem.id === itemId) {
-                    closeModal();
-                }
+                setSuccessMessage('Item marked as found successfully!');
+                setShowSuccess(true);
+                closeMarkFoundModal();
+                // Refetch items to get updated data from server
+                await fetchItems();
             } else {
-                alert(`Failed to update item: ${data.message}`);
+                setErrorMessage(`Failed to mark item as found: ${data.message}`);
+                setShowError(true);
             }
         } catch (error) {
-            alert('Network error occurred while updating item');
+            console.error('Error marking item as found:', error);
+            setErrorMessage('Network error occurred while marking item as found');
+            setShowError(true);
         }
     };
 
@@ -226,17 +316,12 @@ function ManageLostFoundItems() {
     };
 
     const getStatusColor = (status) => {
-        switch (status) {
-            case 'pending': return 'bg-yellow-100 text-yellow-800';
-            case 'approved': return 'bg-green-100 text-green-800';
-            case 'rejected': return 'bg-red-100 text-red-800';
-            case 'claimed': return 'bg-blue-100 text-blue-800';
-            default: return 'bg-gray-100 text-gray-800';
-        }
+        return STATUS_COLORS[status] || STATUS_COLORS.archived;
     };
 
     const getTypeColor = (type) => {
-        return type === 'lost' || type === 'Lost' ? 'bg-red-100 text-red-800' : 'bg-green-100 text-green-800';
+        const normalizedType = type?.toLowerCase();
+        return TYPE_COLORS[normalizedType] || TYPE_COLORS.found;
     };
 
     if (loading) {
@@ -261,11 +346,9 @@ function ManageLostFoundItems() {
             </div>
 
             <div className="hidden md:block mb-6">
-                <div className="flex justify-between items-start">
-                    <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2 break-words">Manage Lost & Found Items</h1>
-                        <p className="text-sm md:text-base text-gray-600">Manage all reported lost and found items</p>
-                    </div>
+                <div>
+                    <h1 className="text-2xl font-bold text-gray-800">Manage Lost & Found Items</h1>
+                    <p className="text-sm text-gray-500">Dashboard / Manage Items</p>
                 </div>
             </div>
 
@@ -371,8 +454,8 @@ function ManageLostFoundItems() {
                                     </div>
                                 )}
                                 {/* Status Badge */}
-                                <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-semibold ${getTypeColor(item.type || item.status)}`}>
-                                    {item.type === 'lost' || item.status === 'lost' ? 'Lost' : 'Found'}
+                                <div className={`absolute top-2 right-2 px-2 py-1 rounded-full text-xs font-semibold ${getTypeColor(item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found' ? 'found' : (item.type || item.status))}`}>
+                                    {item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found' ? 'Found' : 'Lost'}
                                 </div>
                             </div>
 
@@ -406,46 +489,51 @@ function ManageLostFoundItems() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <User className="h-3 w-3 md:h-4 flex-shrink-0" />
-                                        <span className="truncate">By: {item.reporter_name || 'Unknown'}</span>
+                                        <span className="truncate">
+                                            {(item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') 
+                                                ? `Found by: ${item.finder_name || item.reporter_name || 'Unknown'}`
+                                                : `Lost by: ${item.reporter_name || 'Unknown'}`
+                                            }
+                                        </span>
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col gap-1.5 mt-2">
+                                <div className="flex flex-col gap-2 mt-2">
+                                    {/* View Details - Full Width */}
                                     <button
                                         onClick={() => handleView(item)}
-                                        className="w-full px-2 py-1.5 text-xs md:text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                                        className="w-full px-2 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                                        style={{ minHeight: '32px', maxHeight: '32px' }}
                                     >
-                                        <Eye className="h-3 w-3 md:h-4 group-hover:scale-110 transition-transform" />
+                                        <Eye className="h-3 w-3 group-hover:scale-110 transition-transform" />
                                         <span>View Details</span>
                                     </button>
 
-                                    <button
-                                        onClick={() => handleEdit(item)}
-                                        className="w-full px-2 py-1.5 text-xs md:text-sm font-medium bg-orange-600 text-white rounded-md hover:bg-orange-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
-                                    >
-                                        <Edit className="h-3 w-3 md:h-4 group-hover:scale-110 transition-transform" />
-                                        <span>Edit Item</span>
-                                    </button>
+                                    {/* Edit and Mark as Found - Side by Side */}
+                                    <div className="flex gap-2">
+                                        <button
+                                            onClick={() => handleEdit(item)}
+                                            className="flex-1 px-2 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                                            style={{ minHeight: '32px', maxHeight: '32px' }}
+                                        >
+                                            <Edit className="h-3 w-3 group-hover:scale-110 transition-transform" />
+                                            <span>Edit</span>
+                                        </button>
 
-                                    {item.status === 'pending' && (
-                                        <div className="flex gap-1.5">
+                                        {/* Only show Mark as Found button for Lost items that are NOT already marked as found */}
+                                        {(item.type?.toLowerCase() === 'lost' || item.status?.toLowerCase() === 'lost') && 
+                                         item.status?.toLowerCase() !== 'found' && 
+                                         item.type?.toLowerCase() !== 'found' && (
                                             <button
-                                                onClick={() => handleStatusUpdate(item.id, 'approved')}
-                                                className="flex-1 px-2 py-1.5 text-xs md:text-sm font-medium bg-green-600 text-white rounded-md hover:bg-green-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                                                onClick={() => handleMarkAsFound(item)}
+                                                className="flex-1 px-2 py-1.5 text-xs font-medium bg-green-600 text-white rounded-md hover:bg-green-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                                                style={{ minHeight: '32px', maxHeight: '32px' }}
                                             >
-                                                <Check className="h-3 w-3 md:h-4 group-hover:scale-110 transition-transform" />
-                                                <span>Approve</span>
+                                                <Check className="h-3 w-3 group-hover:scale-110 transition-transform" />
+                                                <span>Mark as Found</span>
                                             </button>
-
-                                            <button
-                                                onClick={() => handleStatusUpdate(item.id, 'rejected')}
-                                                className="flex-1 px-2 py-1.5 text-xs md:text-sm font-medium bg-red-600 text-white rounded-md hover:bg-red-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
-                                            >
-                                                <X className="h-3 w-3 md:h-4 group-hover:scale-110 transition-transform" />
-                                                <span>Reject</span>
-                                            </button>
-                                        </div>
-                                    )}
+                                        )}
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -455,191 +543,223 @@ function ManageLostFoundItems() {
 
             {/* Item Details Modal */}
             {showModal && selectedItem && (
-                <>
-                    {/* Transparent Overlay */}
+                <div
+                    className="fixed inset-0 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-0 sm:p-2 md:p-4 pt-8 sm:pt-16 md:pt-4"
+                    onClick={closeModal}
+                >
                     <div
-                        className="fixed inset-0 z-40"
-                        style={{ pointerEvents: 'auto' }}
+                        className="bg-white rounded-t-xl sm:rounded-t-2xl md:rounded-xl shadow-2xl max-w-3xl w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)] md:h-auto md:max-h-[85vh] flex flex-col overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
-                    ></div>
-
-                    {/* Modal Content */}
-                    <div
-                        className="fixed inset-0 flex items-start md:items-center justify-center z-50 p-0 md:p-4 pt-16 md:pt-4"
-                        onClick={closeModal}
                     >
-                        <div
-                            className="bg-white rounded-t-2xl md:rounded-xl shadow-2xl max-w-5xl w-full h-[calc(100vh-4rem)] md:h-auto md:max-h-[85vh] transform transition-all duration-300 scale-100 animate-fade-in flex flex-col overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {/* Modal Header */}
-                            <div className={`text-white p-2.5 md:p-4 flex-shrink-0 ${selectedItem.type === 'lost' ? 'bg-gradient-to-r from-red-600 to-red-700' : 'bg-gradient-to-r from-green-600 to-green-700'}`}>
-                                <div className="flex justify-between items-start gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <h2 className="text-sm md:text-lg lg:text-xl font-bold mb-1 break-words line-clamp-1 md:line-clamp-2">
-                                            {selectedItem.item_name}
-                                        </h2>
-                                        <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
-                                            <span className={`inline-flex px-1.5 md:px-3 py-0.5 text-xs md:text-sm font-semibold rounded-full ${getTypeColor(selectedItem.type)}`}>
-                                                {selectedItem.type === 'lost' ? 'Lost' : 'Found'}
-                                            </span>
+                        {/* Modal Header */}
+                        <div className={`text-white p-2.5 md:p-4 flex-shrink-0 ${(selectedItem.status?.toLowerCase() === 'found' || selectedItem.type?.toLowerCase() === 'found') ? 'bg-gradient-to-r from-green-600 to-green-700' : 'bg-gradient-to-r from-red-600 to-red-700'}`}>
+                            <div className="flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-sm md:text-lg lg:text-xl font-bold mb-1 break-words line-clamp-1 md:line-clamp-2">
+                                        {selectedItem.item_name}
+                                    </h2>
+                                    <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+                                        <span className={`inline-flex px-1.5 md:px-3 py-0.5 text-xs md:text-sm font-semibold rounded-full ${getTypeColor(selectedItem.status?.toLowerCase() === 'found' || selectedItem.type?.toLowerCase() === 'found' ? 'found' : selectedItem.type)}`}>
+                                            {selectedItem.status?.toLowerCase() === 'found' || selectedItem.type?.toLowerCase() === 'found' ? 'Found' : 'Lost'}
+                                        </span>
+                                        {/* Only show status badge if it's not 'found' and not 'lost' (to avoid duplicate with type badge) */}
+                                        {selectedItem.status?.toLowerCase() !== 'found' && 
+                                         selectedItem.status?.toLowerCase() !== 'lost' && (
                                             <span className={`inline-flex px-1.5 md:px-3 py-0.5 text-xs md:text-sm font-semibold rounded-full ${getStatusColor(selectedItem.status)}`}>
                                                 {selectedItem.status}
                                             </span>
+                                        )}
+                                    </div>
+                                </div>
+                                <button
+                                    onClick={closeModal}
+                                    className="text-white hover:text-gray-200 transition-colors p-0.5 md:p-1.5 hover:bg-white hover:bg-opacity-20 rounded flex-shrink-0"
+                                >
+                                    <X className="w-4 h-4 md:w-6 md:h-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
+                            {/* Image Section */}
+                            <div className="w-full md:w-2/5 bg-gray-50 flex flex-col md:border-r border-gray-200 relative">
+                                {selectedItem.image_path && selectedItem.image_path !== 'NULL' && selectedItem.image_path !== 'null' && selectedItem.image_path !== '' ? (
+                                    <div className="relative w-full h-full flex flex-col">
+                                        {/* Fullscreen Button */}
+                                        <div className="flex justify-end items-center p-2 md:p-3 bg-gray-50 border-b border-gray-200 md:border-0">
+                                            <button
+                                                onClick={() => setIsFullscreen(true)}
+                                                className="bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-1.5 md:p-2 rounded-lg transition-all"
+                                                title="View Fullscreen"
+                                            >
+                                                <Maximize2 className="h-4 w-4 md:h-5 md:w-5" />
+                                            </button>
+                                        </div>
+                                        {/* Image */}
+                                        <div className="flex-1 flex items-center justify-center p-3 md:p-6 pt-0 md:pt-0">
+                                            <img
+                                                src={getAssetUrl(selectedItem.image_path)}
+                                                alt={selectedItem.item_name}
+                                                className="max-w-full max-h-full object-contain rounded-lg shadow-lg cursor-pointer hover:opacity-90 transition-opacity"
+                                                onClick={() => setIsFullscreen(true)}
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                    e.target.parentElement.parentElement.nextElementSibling.style.display = 'flex';
+                                                }}
+                                            />
                                         </div>
                                     </div>
-                                    <button
-                                        onClick={closeModal}
-                                        className="text-white hover:text-gray-200 transition-colors p-0.5 md:p-1.5 hover:bg-white hover:bg-opacity-20 rounded flex-shrink-0"
-                                    >
-                                        <X className="w-4 h-4 md:w-6 md:h-6" />
-                                    </button>
+                                ) : null}
+                                <div className={`flex-col items-center justify-center w-full h-full bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 ${selectedItem.image_path && selectedItem.image_path !== 'NULL' && selectedItem.image_path !== 'null' && selectedItem.image_path !== '' ? 'hidden' : 'flex'}`}>
+                                    <Package className="h-16 w-16 text-gray-400 mb-3" />
+                                    <p className="text-gray-500 text-lg font-medium">No image attached</p>
+                                    <p className="text-gray-400 text-sm">Image not provided for this item</p>
                                 </div>
                             </div>
 
-                            {/* Modal Body */}
-                            <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
-                                {/* Image Section */}
-                                <div className="w-full md:w-2/5 bg-gray-50 flex flex-col md:border-r border-gray-200 relative">
-                                    {selectedItem.image_path && selectedItem.image_path !== 'NULL' && selectedItem.image_path !== 'null' && selectedItem.image_path !== '' ? (
-                                        <div className="relative w-full h-full flex flex-col">
-                                            {/* Fullscreen Button */}
-                                            <div className="flex justify-end items-center p-2 md:p-3 bg-gray-50 border-b border-gray-200 md:border-0">
-                                                <button
-                                                    onClick={() => setIsFullscreen(true)}
-                                                    className="bg-black bg-opacity-50 hover:bg-opacity-70 text-white p-1.5 md:p-2 rounded-lg transition-all"
-                                                    title="View Fullscreen"
-                                                >
-                                                    <Maximize2 className="h-4 w-4 md:h-5 md:w-5" />
-                                                </button>
-                                            </div>
-                                            {/* Image */}
-                                            <div className="flex-1 flex items-center justify-center p-3 md:p-6 pt-0 md:pt-0">
-                                                <img
-                                                    src={getAssetUrl(selectedItem.image_path)}
-                                                    alt={selectedItem.item_name}
-                                                    className="max-w-full max-h-full object-contain rounded-lg shadow-lg cursor-pointer hover:opacity-90 transition-opacity"
-                                                    onClick={() => setIsFullscreen(true)}
-                                                    onError={(e) => {
-                                                        e.target.style.display = 'none';
-                                                        e.target.parentElement.parentElement.nextElementSibling.style.display = 'flex';
-                                                    }}
-                                                />
-                                            </div>
-                                        </div>
-                                    ) : null}
-                                    <div className={`flex-col items-center justify-center w-full h-full bg-gray-100 rounded-lg border-2 border-dashed border-gray-300 ${selectedItem.image_path && selectedItem.image_path !== 'NULL' && selectedItem.image_path !== 'null' && selectedItem.image_path !== '' ? 'hidden' : 'flex'}`}>
-                                        <Package className="h-16 w-16 text-gray-400 mb-3" />
-                                        <p className="text-gray-500 text-lg font-medium">No image attached</p>
-                                        <p className="text-gray-400 text-sm">Image not provided for this item</p>
+                            {/* Details Section */}
+                            <div className="w-full md:w-3/5 p-3 md:p-6 flex flex-col md:overflow-y-auto">
+                                <div className="flex-1 space-y-3 md:space-y-4">
+                                    {/* Description */}
+                                    <div className="bg-gray-50 rounded-lg p-3 md:p-4">
+                                        <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-2 flex items-center">
+                                            <Edit className="h-3 w-3 md:h-4 md:w-4 mr-2 text-blue-600 flex-shrink-0" />
+                                            <span>Description</span>
+                                        </h3>
+                                        <p className="text-gray-700 text-xs md:text-sm leading-relaxed break-words">
+                                            {selectedItem.description || 'No description provided'}
+                                        </p>
                                     </div>
-                                </div>
 
-                                {/* Details Section */}
-                                <div className="w-full md:w-3/5 p-3 md:p-6 flex flex-col md:overflow-y-auto">
-                                    <div className="flex-1 space-y-3 md:space-y-4">
-                                        {/* Description */}
+                                    {/* Location & Date */}
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                                         <div className="bg-gray-50 rounded-lg p-3 md:p-4">
                                             <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-2 flex items-center">
-                                                <Edit className="h-3 w-3 md:h-4 md:w-4 mr-2 text-blue-600 flex-shrink-0" />
-                                                <span>Description</span>
+                                                <MapPin className="h-3 w-3 md:h-4 md:w-4 mr-2 text-red-600 flex-shrink-0" />
+                                                <span>Location</span>
                                             </h3>
-                                            <p className="text-gray-700 text-xs md:text-sm leading-relaxed break-words">
-                                                {selectedItem.description || 'No description provided'}
+                                            <p className="text-gray-700 text-xs md:text-sm break-words">
+                                                {selectedItem.location || 'Location not specified'}
                                             </p>
                                         </div>
-
-                                        {/* Location & Date */}
-                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                                            <div className="bg-gray-50 rounded-lg p-3 md:p-4">
-                                                <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-2 flex items-center">
-                                                    <MapPin className="h-3 w-3 md:h-4 md:w-4 mr-2 text-red-600 flex-shrink-0" />
-                                                    <span>Location</span>
-                                                </h3>
-                                                <p className="text-gray-700 text-xs md:text-sm break-words">
-                                                    {selectedItem.location || 'Location not specified'}
-                                                </p>
-                                            </div>
-                                            <div className="bg-gray-50 rounded-lg p-3 md:p-4">
-                                                <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-2 flex items-center">
-                                                    <Calendar className="h-3 w-3 md:h-4 md:w-4 mr-2 text-green-600 flex-shrink-0" />
-                                                    <span>Date Reported</span>
-                                                </h3>
-                                                <p className="text-gray-700 text-xs md:text-sm">
-                                                    {selectedItem.date_reported
-                                                        ? new Date(selectedItem.date_reported).toLocaleDateString('en-US', {
-                                                            year: 'numeric',
-                                                            month: 'long',
-                                                            day: 'numeric'
-                                                        })
-                                                        : 'Date not available'
-                                                    }
-                                                </p>
-                                            </div>
-                                        </div>
-
-                                        {/* Reporter Information */}
                                         <div className="bg-gray-50 rounded-lg p-3 md:p-4">
-                                            <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-3 flex items-center">
-                                                <User className="h-3 w-3 md:h-4 md:w-4 mr-2 text-purple-600 flex-shrink-0" />
-                                                <span>Reporter Information</span>
+                                            <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-2 flex items-center">
+                                                <Calendar className="h-3 w-3 md:h-4 md:w-4 mr-2 text-green-600 flex-shrink-0" />
+                                                <span>Date Reported</span>
                                             </h3>
-                                            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
-                                                <div>
-                                                    <p className="text-xs text-gray-600 mb-1">Reporter Name</p>
-                                                    <p className="text-gray-800 font-medium text-xs md:text-sm break-words">
-                                                        {selectedItem.reporter_name || 'Not provided'}
-                                                    </p>
-                                                </div>
-                                                <div>
-                                                    <p className="text-xs text-gray-600 mb-1">Contact Info</p>
-                                                    <p className="text-gray-800 font-medium text-xs md:text-sm break-words">
-                                                        {selectedItem.contact_info || 'Not provided'}
-                                                    </p>
-                                                </div>
+                                            <p className="text-gray-700 text-xs md:text-sm">
+                                                {selectedItem.date_reported
+                                                    ? new Date(selectedItem.date_reported).toLocaleDateString('en-US', {
+                                                        year: 'numeric',
+                                                        month: 'long',
+                                                        day: 'numeric'
+                                                    })
+                                                    : 'Date not available'
+                                                }
+                                            </p>
+                                        </div>
+                                    </div>
+
+                                    {/* Lost By Information */}
+                                    <div className="bg-gray-50 rounded-lg p-3 md:p-4">
+                                        <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-3 flex items-center">
+                                            <User className="h-3 w-3 md:h-4 md:w-4 mr-2 text-purple-600 flex-shrink-0" />
+                                            <span>Lost By</span>
+                                        </h3>
+                                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                                            <div>
+                                                <p className="text-xs text-gray-600 mb-1">Name</p>
+                                                <p className="text-gray-800 font-medium text-xs md:text-sm break-words">
+                                                    {selectedItem.reporter_name || 'Not provided'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-600 mb-1">Student ID</p>
+                                                <p className="text-gray-800 font-medium text-xs md:text-sm break-words">
+                                                    {selectedItem.student_id || 'Not provided'}
+                                                </p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-gray-600 mb-1">Contact Info</p>
+                                                <p className="text-gray-800 font-medium text-xs md:text-sm break-words">
+                                                    {selectedItem.contact_info || 'Not provided'}
+                                                </p>
                                             </div>
                                         </div>
                                     </div>
 
-                                    {/* Action Buttons */}
-                                    <div className="flex flex-col md:flex-row md:flex-wrap gap-2 md:gap-3 pt-3 md:pt-4 mt-3 md:mt-4 border-t border-gray-200">
-                                        {selectedItem.status === 'pending' && (
-                                            <>
-                                                <button
-                                                    onClick={() => {
-                                                        handleStatusUpdate(selectedItem.id, 'approved');
-                                                        closeModal();
-                                                    }}
-                                                    className="bg-green-600 hover:bg-green-700 text-white px-3 md:px-4 py-2 rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm md:text-base w-full md:w-auto"
-                                                >
-                                                    <Check size={16} />
-                                                    <span>Approve</span>
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        handleStatusUpdate(selectedItem.id, 'rejected');
-                                                        closeModal();
-                                                    }}
-                                                    className="bg-red-600 hover:bg-red-700 text-white px-3 md:px-4 py-2 rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm md:text-base w-full md:w-auto"
-                                                >
-                                                    <X size={16} />
-                                                    <span>Reject</span>
-                                                </button>
-                                            </>
-                                        )}
+                                    {/* Change History / Audit Log */}
+                                    {itemHistory.length > 0 && (
+                                        <div className="bg-blue-50 rounded-lg p-3 md:p-4 border border-blue-200">
+                                            <h3 className="text-sm md:text-base font-semibold text-blue-900 mb-3 flex items-center">
+                                                <History className="h-3 w-3 md:h-4 md:w-4 mr-2 text-blue-600 flex-shrink-0" />
+                                                <span>Change History</span>
+                                            </h3>
+                                            {loadingHistory ? (
+                                                <p className="text-xs text-blue-700">Loading history...</p>
+                                            ) : (
+                                                <div className="space-y-3">
+                                                    {itemHistory.map((record) => (
+                                                        <div key={record.id} className="bg-white rounded-lg p-3 border border-blue-100">
+                                                            <div className="flex items-start justify-between mb-2">
+                                                                <span className="text-xs font-semibold text-blue-800">
+                                                                    {record.change_reason}
+                                                                </span>
+                                                                <span className="text-xs text-gray-500">
+                                                                    {new Date(record.created_at).toLocaleString('en-US', {
+                                                                        year: 'numeric',
+                                                                        month: 'short',
+                                                                        day: 'numeric',
+                                                                        hour: '2-digit',
+                                                                        minute: '2-digit'
+                                                                    })}
+                                                                </span>
+                                                            </div>
+                                                            <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                <div>
+                                                                    <span className="text-gray-600">Previous: </span>
+                                                                    <span className="font-medium text-red-600">{record.previous_type}</span>
+                                                                </div>
+                                                                <div>
+                                                                    <span className="text-gray-600">New: </span>
+                                                                    <span className="font-medium text-green-600">{record.new_type}</span>
+                                                                </div>
+                                                            </div>
+                                                            {record.finder_name && (
+                                                                <div className="mt-2 pt-2 border-t border-blue-100">
+                                                                    <p className="text-xs text-gray-700">
+                                                                        <span className="font-semibold">Found by:</span> {record.finder_name}
+                                                                        {record.finder_student_id && ` (${record.finder_student_id})`}
+                                                                    </p>
+                                                                    {record.finder_contact && (
+                                                                        <p className="text-xs text-gray-700">
+                                                                            <span className="font-semibold">Contact:</span> {record.finder_contact}
+                                                                        </p>
+                                                                    )}
+                                                                </div>
+                                                            )}
+                                                        </div>
+                                                    ))}
+                                                </div>
+                                            )}
+                                        </div>
+                                    )}
+                                </div>
 
-                                        <button
-                                            onClick={closeModal}
-                                            className="bg-gray-500 hover:bg-gray-600 text-white px-3 md:px-4 py-2 rounded-lg transition-colors text-sm md:text-base w-full md:w-auto"
-                                        >
-                                            Close
-                                        </button>
-                                    </div>
+                                {/* Action Buttons */}
+                                <div className="flex justify-end pt-3 md:pt-4 mt-3 md:mt-4 border-t border-gray-200">
+                                    <button
+                                        onClick={closeModal}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 md:px-6 py-2 rounded-lg transition-colors text-sm md:text-base font-medium"
+                                    >
+                                        Close
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </>
+                </div>
             )}
 
             {/* Fullscreen Image Viewer */}
@@ -703,19 +823,23 @@ function ManageLostFoundItems() {
             {/* Edit Item Modal */}
             {showEditModal && editingItem && (
                 <div
-                    className="fixed inset-0 flex items-center justify-center z-50 p-4 bg-transparent"
+                    className="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    onClick={closeEditModal}
                 >
                     <div
-                        className="bg-white rounded-xl shadow-2xl max-w-6xl w-full max-h-[90vh] overflow-hidden"
+                        className="bg-white rounded-xl shadow-2xl max-w-4xl w-full max-h-[90vh] overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
                     >
                         {/* Modal Header */}
-                        <div className="bg-orange-600 text-white p-4 rounded-t-xl">
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 text-white p-6 rounded-t-xl">
                             <div className="flex justify-between items-center">
-                                <h2 className="text-xl font-bold">Edit Item</h2>
+                                <div>
+                                    <h2 className="text-2xl font-bold">Edit Item</h2>
+                                    <p className="text-blue-100 mt-1">Update item information</p>
+                                </div>
                                 <button
                                     onClick={closeEditModal}
-                                    className="text-white hover:text-gray-200 transition-colors"
+                                    className="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-20 rounded-lg"
                                 >
                                     <X className="w-6 h-6" />
                                 </button>
@@ -736,7 +860,7 @@ function ManageLostFoundItems() {
                                             type="text"
                                             value={editingItem.item_name || ''}
                                             onChange={(e) => setEditingItem(prev => ({ ...prev, item_name: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                             placeholder="Enter item name"
                                         />
                                     </div>
@@ -749,7 +873,7 @@ function ManageLostFoundItems() {
                                         <textarea
                                             value={editingItem.description || ''}
                                             onChange={(e) => setEditingItem(prev => ({ ...prev, description: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                             rows="3"
                                             placeholder="Enter item description"
                                         />
@@ -760,13 +884,35 @@ function ManageLostFoundItems() {
                                         <label className="block text-sm font-medium text-gray-700 mb-2">
                                             Location
                                         </label>
-                                        <input
-                                            type="text"
+                                        <select
                                             value={editingItem.location || ''}
-                                            onChange={(e) => setEditingItem(prev => ({ ...prev, location: e.target.value }))}
-                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
-                                            placeholder="Enter location where item was found/lost"
-                                        />
+                                            onChange={(e) => {
+                                                setEditingItem(prev => ({ ...prev, location: e.target.value }));
+                                                if (e.target.value !== 'Others') {
+                                                    setEditingItem(prev => ({ ...prev, customLocation: '' }));
+                                                }
+                                            }}
+                                            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                                        >
+                                            <option value="">Select Location</option>
+                                            {LOCATION_OPTIONS.map(location => (
+                                                <option key={location.value} value={location.value}>
+                                                    {location.label}
+                                                </option>
+                                            ))}
+                                        </select>
+
+                                        {/* Custom location input when "Others" is selected */}
+                                        {editingItem.location === 'Others' && (
+                                            <input
+                                                type="text"
+                                                value={editingItem.customLocation || ''}
+                                                onChange={(e) => setEditingItem(prev => ({ ...prev, customLocation: e.target.value }))}
+                                                placeholder="Please specify the location"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent mt-2"
+                                                required
+                                            />
+                                        )}
                                     </div>
 
                                     {/* Category and Type */}
@@ -778,7 +924,7 @@ function ManageLostFoundItems() {
                                             <select
                                                 value={editingItem.category || ''}
                                                 onChange={(e) => setEditingItem(prev => ({ ...prev, category: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                             >
                                                 <option value="">Select Category</option>
                                                 {categories.map(cat => (
@@ -794,7 +940,7 @@ function ManageLostFoundItems() {
                                             <select
                                                 value={editingItem.type || ''}
                                                 onChange={(e) => setEditingItem(prev => ({ ...prev, type: e.target.value }))}
-                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-orange-500 focus:border-transparent"
+                                                className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                                             >
                                                 <option value="">Select Type</option>
                                                 <option value="lost">Lost</option>
@@ -842,7 +988,7 @@ function ManageLostFoundItems() {
                                         />
                                         <label
                                             htmlFor="edit-image-upload"
-                                            className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-orange-500 focus-within:border-orange-500 bg-white text-gray-700 font-medium cursor-pointer transition-colors duration-200 flex items-center justify-center gap-2 hover:bg-orange-50"
+                                            className="w-full px-4 py-3 border-2 border-dashed border-gray-300 rounded-lg hover:border-blue-500 focus-within:border-blue-500 bg-white text-gray-700 font-medium cursor-pointer transition-colors duration-200 flex items-center justify-center gap-2 hover:bg-blue-50"
                                         >
                                             <svg className="w-5 h-5 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                                                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z" />
@@ -864,7 +1010,7 @@ function ManageLostFoundItems() {
                             </button>
                             <button
                                 onClick={handleSaveEdit}
-                                className="px-4 py-2 bg-orange-600 text-white rounded-lg hover:bg-orange-700 transition-colors flex items-center gap-2"
+                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
                             >
                                 <Check className="h-4 w-4" />
                                 Save Changes
@@ -873,6 +1019,165 @@ function ManageLostFoundItems() {
                     </div>
                 </div>
             )}
+
+            {/* Mark as Found Modal */}
+            {showMarkFoundModal && itemToMarkFound && (
+                <div
+                    className="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center p-4"
+                    onClick={closeMarkFoundModal}
+                >
+                    <div
+                        className="bg-blue-50 rounded-xl shadow-2xl max-w-2xl w-full border-2 border-blue-200"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-6 rounded-t-xl">
+                            <div className="flex justify-between items-center">
+                                <div>
+                                    <h2 className="text-2xl font-bold text-white">Mark Item as Found</h2>
+                                    <p className="text-blue-100 mt-1 text-base">Enter finder information</p>
+                                </div>
+                                <button
+                                    onClick={closeMarkFoundModal}
+                                    className="text-white hover:text-gray-200 transition-colors p-2 hover:bg-white hover:bg-opacity-20 rounded-lg"
+                                >
+                                    <X className="w-6 h-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body */}
+                        <div className="p-6">
+                            <div className="mb-6 bg-blue-100 rounded-lg p-4 border border-blue-200">
+                                <div className="flex gap-4 items-start">
+                                    <div className="flex-1">
+                                        <h3 className="font-semibold text-blue-900 mb-2">Item: {itemToMarkFound.item_name}</h3>
+                                        <p className="text-sm text-blue-800">{itemToMarkFound.description}</p>
+                                    </div>
+                                    {itemToMarkFound.image_path && itemToMarkFound.image_path !== 'NULL' && itemToMarkFound.image_path !== 'null' && itemToMarkFound.image_path !== '' && (
+                                        <div className="w-20 h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                                            <img
+                                                src={getAssetUrl(itemToMarkFound.image_path)}
+                                                alt={itemToMarkFound.item_name}
+                                                className="w-full h-full object-cover"
+                                                onError={(e) => {
+                                                    e.target.style.display = 'none';
+                                                }}
+                                            />
+                                        </div>
+                                    )}
+                                </div>
+                            </div>
+
+                            <div className="space-y-4">
+                                {/* Name */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-blue-900 mb-2">
+                                        Finder Name <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={finderInfo.name}
+                                        onChange={(e) => setFinderInfo(prev => ({ ...prev, name: e.target.value }))}
+                                        className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                        placeholder="Enter finder's full name"
+                                        required
+                                    />
+                                </div>
+
+                                {/* Student ID */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-blue-900 mb-2">
+                                        Student ID <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="text"
+                                        value={finderInfo.studentId}
+                                        onChange={(e) => setFinderInfo(prev => ({ ...prev, studentId: e.target.value }))}
+                                        className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                        placeholder="1234-5678"
+                                        required
+                                    />
+                                </div>
+
+                                {/* Contact Info */}
+                                <div>
+                                    <label className="block text-sm font-semibold text-blue-900 mb-2">
+                                        Contact Number <span className="text-red-500">*</span>
+                                    </label>
+                                    <input
+                                        type="tel"
+                                        value={finderInfo.contactInfo}
+                                        onChange={(e) => setFinderInfo(prev => ({ ...prev, contactInfo: e.target.value }))}
+                                        className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                        placeholder="09123456789"
+                                        required
+                                    />
+                                </div>
+
+                                {/* Date and Time */}
+                                <div className="grid grid-cols-2 gap-4">
+                                    <div>
+                                        <label className="block text-sm font-semibold text-blue-900 mb-2">
+                                            Found Date <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="date"
+                                            value={finderInfo.found_date}
+                                            onChange={(e) => setFinderInfo(prev => ({ ...prev, found_date: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                            required
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm font-semibold text-blue-900 mb-2">
+                                            Found Time <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="time"
+                                            value={finderInfo.found_time}
+                                            onChange={(e) => setFinderInfo(prev => ({ ...prev, found_time: e.target.value }))}
+                                            className="w-full px-4 py-2 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                            required
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex gap-3 p-6 border-t border-blue-200 bg-blue-50">
+                            <button
+                                onClick={closeMarkFoundModal}
+                                className="flex-1 px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors font-medium"
+                            >
+                                Cancel
+                            </button>
+                            <button
+                                onClick={handleSubmitMarkFound}
+                                className="flex-1 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-2"
+                            >
+                                <Check className="h-4 w-4" />
+                                Mark as Found
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Success Modal */}
+            <SuccessModal 
+                show={showSuccess}
+                onClose={() => setShowSuccess(false)}
+                message={successMessage}
+            />
+
+            {/* Error Modal */}
+            <ErrorModal 
+                show={showError}
+                onClose={() => setShowError(false)}
+                message={errorMessage}
+            />
         </div>
     );
 }

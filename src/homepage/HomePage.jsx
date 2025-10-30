@@ -1,12 +1,12 @@
 // src/homepage/HomePage.jsx
-import { Search, ArrowRight, Eye, Calendar, MapPin, User, Filter, LogOut, FileText, X, Maximize2, ZoomIn, ZoomOut } from 'lucide-react';
+import { Search, Eye, Calendar, MapPin, User, FileText, X, Maximize2, ZoomIn, ZoomOut, Mail, Clock, Building2, Megaphone } from 'lucide-react';
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { API_ENDPOINTS, getAssetUrl } from '../utils/api';
 
 function HomePage() {
     const navigate = useNavigate();
-    const [user, setUser] = useState(null);
+    const location = useLocation();
     const [lostItems, setLostItems] = useState([]);
     const [foundItems, setFoundItems] = useState([]);
     const [announcements, setAnnouncements] = useState([]);
@@ -14,10 +14,9 @@ function HomePage() {
 
     // Search and filter states
     const [searchTerm, setSearchTerm] = useState('');
-    const [typeFilter, setTypeFilter] = useState('all');
+    const [activeTab, setActiveTab] = useState('lost'); // 'lost' or 'found'
     const [categoryFilter, setCategoryFilter] = useState('all');
     const [categories, setCategories] = useState([]);
-    const [showFilters, setShowFilters] = useState(false);
     const [claimInstructions, setClaimInstructions] = useState([]);
     const [contactInfo, setContactInfo] = useState(null);
 
@@ -27,13 +26,19 @@ function HomePage() {
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(1);
 
-    // Check authentication status
+    // Message modal state
+    const [showMessageModal, setShowMessageModal] = useState(false);
+    const [messageContent, setMessageContent] = useState('');
+
+    // Update document title and URL
     useEffect(() => {
-        const userData = localStorage.getItem('user');
-        if (userData) {
-            setUser(JSON.parse(userData));
+        document.title = 'NC iFound - Homepage';
+        
+        // Redirect root to /homepage
+        if (location.pathname === '/') {
+            navigate('/homepage', { replace: true });
         }
-    }, []);
+    }, [location.pathname, navigate]);
 
     // Fetch latest items and announcements from database
     useEffect(() => {
@@ -44,28 +49,15 @@ function HomePage() {
         fetchContactInfo();
     }, []);
 
-    // Debug effect to log filter changes
-    useEffect(() => {
-        console.log('Filter changed:', {
-            categoryFilter,
-            typeFilter,
-            searchTerm,
-            totalItems: [...lostItems, ...foundItems].length,
-            categories: categories.map(cat => cat.name)
-        });
-    }, [categoryFilter, typeFilter, searchTerm, lostItems, foundItems, categories]);
-
     const fetchCategories = async () => {
         try {
             const response = await fetch(API_ENDPOINTS.CATEGORIES.ALL);
             const data = await response.json();
-            console.log('Categories API response:', data);
             if (data.success) {
-                console.log('Available categories:', data.categories);
                 setCategories(data.categories || []);
             }
         } catch (error) {
-            console.error('Error fetching categories:', error);
+            // Error fetching categories
         }
     };
 
@@ -79,37 +71,15 @@ function HomePage() {
             }
             
             const data = await response.json();
-            console.log('Raw API response:', data); // Debug log
 
             if (data.success) {
-                console.log('Latest items data:', data); // Debug log
-                console.log('Lost items:', data.lost_items); // Debug log
-                console.log('Found items:', data.found_items); // Debug log
-
-                // Debug: Log category information for each item
-                const allItems = [...(data.lost_items || []), ...(data.found_items || [])];
-                console.log('Items with categories:', allItems.map(item => ({
-                    name: item.item_name,
-                    category: item.category,
-                    category_name: item.category_name,
-                    category_id: item.category_id
-                })));
-
-                // Check for archived items
-                const lostArchived = (data.lost_items || []).filter(item => item.status === 'archived');
-                const foundArchived = (data.found_items || []).filter(item => item.status === 'archived');
-                console.log('Archived lost items:', lostArchived);
-                console.log('Archived found items:', foundArchived);
-
                 setLostItems(data.lost_items || []);
                 setFoundItems(data.found_items || []);
             } else {
-                console.error('API error:', data.message);
                 setLostItems([]);
                 setFoundItems([]);
             }
         } catch (error) {
-            console.error('Error fetching latest items:', error);
             setLostItems([]);
             setFoundItems([]);
         } finally {
@@ -125,11 +95,9 @@ function HomePage() {
             if (data.success) {
                 setAnnouncements(data.announcements || []);
             } else {
-                console.error('API error:', data.message);
                 setAnnouncements([]);
             }
         } catch (error) {
-            console.error('Error fetching announcements:', error);
             setAnnouncements([]);
         } finally {
             setLoading(false);
@@ -144,34 +112,19 @@ function HomePage() {
                 setClaimInstructions(data.instructions || []);
             }
         } catch (error) {
-            console.error('Error fetching claim instructions:', error);
+            // Error fetching claim instructions
         }
     };
 
     const fetchContactInfo = async () => {
         try {
-            const response = await fetch(API_ENDPOINTS.CLAIM_INSTRUCTIONS.CONTACT);
+            const response = await fetch(API_ENDPOINTS.CONTACT_INFO.GET);
             const data = await response.json();
-            if (data.success && data.contact) {
-                setContactInfo(data.contact);
+            if (data.success && data.contact_info) {
+                setContactInfo(data.contact_info);
             }
         } catch (error) {
-            console.error('Error fetching contact info:', error);
-        }
-    };
-
-    const handleLogout = () => {
-        localStorage.removeItem('user');
-        sessionStorage.removeItem('user');
-        setUser(null);
-        navigate('/', { replace: true });
-    };
-
-    const handleProfileClick = () => {
-        if (user?.isAdmin) {
-            navigate('/admin-dashboard');
-        } else {
-            navigate('/user-dashboard');
+            // Error fetching contact info
         }
     };
 
@@ -190,22 +143,31 @@ function HomePage() {
     };
 
     const handleClaimItem = () => {
-        // Show message box about proceeding to student council office
-        alert('Please proceed to the Student Council Office to claim this item.');
+        // Show different message based on item status
+        // Priority: Check if item is FOUND first (regardless of original type)
+        let message = '';
+        if (selectedItem.status?.toLowerCase() === 'found' || selectedItem.type?.toLowerCase() === 'found') {
+            // Item is found (either marked as found or reported as found) - show claim message
+            message = 'Please proceed to the Student Council Office to claim this item.';
+        } else if (selectedItem.status?.toLowerCase() === 'lost' || selectedItem.type?.toLowerCase() === 'lost') {
+            // Item is still lost - show return message
+            message = 'Please proceed to the Student Council Office to return this item to its owner. Thank you for your help!';
+        } else {
+            // Default - show claim message
+            message = 'Please proceed to the Student Council Office to claim this item.';
+        }
+        setMessageContent(message);
+        setShowMessageModal(true);
         closeItemModal();
     };
 
-    // Restore background scrolling
-    document.body.style.overflow = 'unset';
+    const closeMessageModal = () => {
+        setShowMessageModal(false);
+        setMessageContent('');
+    };
 
     // Filter items based on search and filters
     const allItems = [...lostItems, ...foundItems];
-    console.log('🔍 Filtering Debug:');
-    console.log('Total items before filtering:', allItems.length);
-    console.log('Items by status:', allItems.reduce((acc, item) => {
-        acc[item.status] = (acc[item.status] || 0) + 1;
-        return acc;
-    }, {}));
     
     const filteredItems = allItems.filter(item => {
         // Exclude claimed items
@@ -213,20 +175,14 @@ function HomePage() {
             return false;
         }
 
-        // Exclude archived items (older than 2 weeks and not claimed)
-        const twoWeeksAgo = new Date();
-        twoWeeksAgo.setDate(twoWeeksAgo.getDate() - 14);
-        const itemDate = new Date(item.created_at || item.date_reported);
-        const isArchived = itemDate < twoWeeksAgo && item.status !== 'claimed';
-        const isNotArchived = !isArchived;
-        
-        if (isArchived) {
+        // Exclude archived items
+        if (item.status === 'archived') {
             return false;
         }
 
         const matchesSearch = item.item_name?.toLowerCase().includes(searchTerm.toLowerCase()) ||
             item.description?.toLowerCase().includes(searchTerm.toLowerCase());
-        const matchesType = typeFilter === 'all' || item.type?.toLowerCase() === typeFilter.toLowerCase();
+        const matchesType = item.type?.toLowerCase() === activeTab.toLowerCase();
 
         // Enhanced category matching - handle multiple possible category fields
         let matchesCategory = categoryFilter === 'all';
@@ -251,25 +207,8 @@ function HomePage() {
             });
         }
 
-        // Debug logging for category filtering
-        if (categoryFilter !== 'all') {
-            console.log('Category Filter Debug:', {
-                categoryFilter,
-                itemCategory: item.category,
-                itemCategoryName: item.category_name,
-                itemCategoryId: item.category_id,
-                matchesCategory,
-                itemName: item.item_name
-            });
-        }
-
-        return isNotArchived && matchesSearch && matchesType && matchesCategory;
+        return matchesSearch && matchesType && matchesCategory;
     });
-    
-    console.log('Final filtered items count:', filteredItems.length);
-    console.log('Filtered items:', filteredItems.map(item => item.item_name));
-    console.log('🔄 Loading state:', loading);
-    console.log('🎯 Should show items:', !loading && filteredItems.length > 0);
 
     return (
         <div
@@ -281,56 +220,12 @@ function HomePage() {
                 backgroundAttachment: "fixed"
             }}
         >
-            <header className="bg-blue-600 text-white p-2 sm:p-3 md:p-5">
-                <div className="flex items-center justify-between w-full gap-2 sm:gap-2 md:gap-0">
-                    {/* Left: Logo + Title */}
-                    <div className="flex items-center gap-2 sm:gap-2 md:gap-3 flex-1 min-w-0">
-                        <img src="/nclogo.png" alt="NC Logo" className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 object-contain flex-shrink-0" />
-                        <h1 className="text-xs sm:text-sm md:text-2xl font-bold break-words line-clamp-1 md:line-clamp-2">NC LOST & FOUND</h1>
-                    </div>
-
-                    {/* Right: Buttons */}
-                    <div className="flex items-center gap-1.5 sm:gap-2 md:gap-3 flex-shrink-0">
-                        {user ? (
-                            // Authenticated user buttons
-                            <>
-                                <div className="hidden md:flex items-center gap-2 bg-blue-700 px-3 py-2 rounded-lg">
-                                    <User className="h-4 w-4" />
-                                    <span className="text-sm">{user.email}</span>
-                                </div>
-                                <button
-                                    onClick={handleProfileClick}
-                                    className="bg-blue-700 hover:bg-blue-800 px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 rounded text-xs sm:text-sm md:text-base whitespace-nowrap"
-                                >
-                                    <span className="sm:hidden">Dash</span>
-                                    <span className="hidden sm:inline">Dashboard</span>
-                                </button>
-                                <button
-                                    onClick={handleLogout}
-                                    className="bg-red-500 hover:bg-red-600 p-1 sm:p-1.5 md:px-4 md:py-2 rounded flex items-center justify-center"
-                                    title="Logout"
-                                >
-                                    <LogOut className="h-4 w-4 sm:h-5 sm:w-5 md:h-5 md:w-5" />
-                                    <span className="hidden md:inline md:ml-2">Logout</span>
-                                </button>
-                            </>
-                        ) : (
-                            // Guest user buttons - Only Sign In for mobile
-                            <>
-                                <button
-                                    onClick={() => navigate('/login')}
-                                    className="bg-blue-700 hover:bg-blue-800 px-2 sm:px-3 md:px-4 py-1 sm:py-1.5 md:py-2 rounded text-xs sm:text-sm md:text-base whitespace-nowrap"
-                                >
-                                    Sign In
-                                </button>
-                                <button
-                                    onClick={() => navigate('/signup')}
-                                    className="hidden sm:block bg-blue-700 hover:bg-blue-800 px-3 md:px-4 py-1.5 md:py-2 rounded text-sm md:text-base whitespace-nowrap"
-                                >
-                                    Sign Up
-                                </button>
-                            </>
-                        )}
+            <header className="bg-blue-600 text-white p-3 sm:p-4 md:p-6">
+                <div className="flex items-center justify-center w-full">
+                    {/* Center: Logo + Title */}
+                    <div className="flex items-center gap-3 sm:gap-4 md:gap-5">
+                        <img src="/nclogo.png" alt="NC Logo" className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 object-contain flex-shrink-0" />
+                        <h1 className="text-xl sm:text-2xl md:text-4xl font-bold">NC iFound</h1>
                     </div>
                 </div>
             </header>
@@ -338,62 +233,55 @@ function HomePage() {
             {/* Search Section */}
             <div className="container mx-auto p-1 sm:p-3 md:p-6">
                 <div className="max-w-6xl mx-auto mb-2 sm:mb-4 md:mb-8">
-                    <div className="flex items-center gap-1 sm:gap-2 md:gap-4 mb-2 sm:mb-3 md:mb-4">
+                    {/* Search Bar and Category Filter */}
+                    <div className="flex items-center gap-2 mb-3">
                         <div className="relative flex-1">
                             <input
                                 type="text"
-                                placeholder="Search..."
+                                placeholder="Search items..."
                                 value={searchTerm}
                                 onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full p-3 sm:p-3 md:p-4 pr-12 sm:pr-12 md:pr-16 rounded-lg bg-white bg-opacity-90 shadow-lg text-sm sm:text-base md:text-lg"
+                                className="w-full p-2 sm:p-2.5 md:p-3 pr-10 rounded-lg bg-white bg-opacity-90 shadow-md text-sm sm:text-base"
                             />
-                            <button className="absolute right-2 sm:right-3 md:right-3 top-1/2 transform -translate-y-1/2 text-gray-600 p-1 sm:p-1.5 md:p-2 rounded">
-                                <Search className="h-4 w-4 sm:h-5 sm:w-5 md:h-5 md:w-5" />
+                            <button className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600 p-1">
+                                <Search className="h-4 w-4 sm:h-5 sm:w-5" />
                             </button>
                         </div>
-                        <button
-                            onClick={() => setShowFilters(!showFilters)}
-                            className={`p-3 sm:p-3 md:p-4 rounded-lg shadow-lg transition-colors ${showFilters ? 'bg-blue-700 text-white' : 'bg-white bg-opacity-90 text-blue-600'
-                                }`}
+                        <select
+                            value={categoryFilter}
+                            onChange={(e) => setCategoryFilter(e.target.value)}
+                            className="px-3 py-2 sm:py-2.5 md:py-3 border border-gray-300 rounded-lg bg-white shadow-md text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                         >
-                            <Filter className="h-4 w-4 sm:h-5 sm:w-5 md:h-5 md:w-5" />
-                        </button>
+                            <option value="all">All Categories</option>
+                            {categories.map(cat => (
+                                <option key={cat.id} value={cat.name}>{cat.name}</option>
+                            ))}
+                        </select>
                     </div>
 
-                    {/* Filter Dropdowns */}
-                    {showFilters && (
-                        <div className="flex flex-col md:flex-row gap-1 sm:gap-2 md:gap-4 bg-white bg-opacity-90 p-2 sm:p-3 md:p-4 rounded-lg shadow-lg">
-                            <select
-                                value={typeFilter}
-                                onChange={(e) => setTypeFilter(e.target.value)}
-                                className="flex-1 px-4 md:px-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent text-base md:text-base bg-white"
-                            >
-                                <option value="all">All Types</option>
-                                <option value="lost">Lost Items</option>
-                                <option value="found">Found Items</option>
-                            </select>
-                            <select
-                                value={categoryFilter}
-                                onChange={(e) => setCategoryFilter(e.target.value)}
-                                className="flex-1 px-4 md:px-4 py-3 border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-600 focus:border-transparent text-base md:text-base bg-white"
-                            >
-                                <option value="all">All Categories</option>
-                                {categories.map(cat => (
-                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
-                                ))}
-                            </select>
-                            <button
-                                onClick={() => {
-                                    setSearchTerm('');
-                                    setTypeFilter('all');
-                                    setCategoryFilter('all');
-                                }}
-                                className="px-4 sm:px-4 md:px-4 py-3 sm:py-3 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors text-base sm:text-base md:text-base"
-                            >
-                                Clear Filters
-                            </button>
-                        </div>
-                    )}
+                    {/* Tab Buttons - Lost / Found (Below Search) */}
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => setActiveTab('lost')}
+                            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                activeTab === 'lost'
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'bg-white bg-opacity-80 text-gray-600 hover:bg-blue-100'
+                            }`}
+                        >
+                            Lost Items
+                        </button>
+                        <button
+                            onClick={() => setActiveTab('found')}
+                            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                activeTab === 'found'
+                                    ? 'bg-blue-600 text-white shadow-md'
+                                    : 'bg-white bg-opacity-80 text-gray-600 hover:bg-blue-100'
+                            }`}
+                        >
+                            Found Items
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -406,17 +294,14 @@ function HomePage() {
                         <div>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 sm:mb-3 md:mb-6 gap-2">
                                 <div>
-                                    <h2 className="text-sm sm:text-lg md:text-3xl font-bold text-blue-700">All Items</h2>
-                                    {(categoryFilter !== 'all' || typeFilter !== 'all' || searchTerm) && (
+                                    <h2 className="text-sm sm:text-lg md:text-3xl font-bold text-blue-700">
+                                        {activeTab === 'lost' ? 'Lost Items' : 'Found Items'}
+                                    </h2>
+                                    {(categoryFilter !== 'all' || searchTerm) && (
                                         <div className="flex flex-wrap gap-1 sm:gap-2 mt-1 sm:mt-2">
                                             {searchTerm && (
                                                 <span className="px-1 sm:px-2 py-0.5 sm:py-1 bg-blue-100 text-blue-800 rounded-full text-[10px] sm:text-xs">
                                                     Search: "{searchTerm}"
-                                                </span>
-                                            )}
-                                            {typeFilter !== 'all' && (
-                                                <span className="px-1 sm:px-2 py-0.5 sm:py-1 bg-green-100 text-green-800 rounded-full text-[10px] sm:text-xs">
-                                                    Type: {typeFilter}
                                                 </span>
                                             )}
                                             {categoryFilter !== 'all' && (
@@ -427,7 +312,7 @@ function HomePage() {
                                         </div>
                                     )}
                                 </div>
-                                <div className="text-blue-600 font-semibold text-xs sm:text-sm md:text-base">
+                                <div className="text-gray-600 font-semibold text-xs sm:text-sm md:text-base">
                                     {filteredItems.length} {filteredItems.length === 1 ? 'item' : 'items'}
                                 </div>
                             </div>
@@ -451,7 +336,6 @@ function HomePage() {
                                                             className="w-full h-full object-contain bg-gray-100"
                                                             loading="lazy"
                                                             onError={(e) => {
-                                                                console.log('Image failed to load:', item.image_path || item.image_url);
                                                                 e.target.style.display = 'none';
                                                                 e.target.parentElement.innerHTML = '<div class="text-center text-gray-400"><div class="text-lg sm:text-4xl mb-1 sm:mb-2">📦</div><p class="text-[10px] sm:text-sm">No Image</p></div>';
                                                             }}
@@ -463,13 +347,14 @@ function HomePage() {
                                                         </div>
                                                     )}
                                                     {/* Status Badge */}
-                                                    <div className={`absolute top-0.5 sm:top-1 md:top-2 right-0.5 sm:right-1 md:right-2 px-1 sm:px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-[8px] sm:text-xs font-semibold ${item.status === 'claimed'
-                                                        ? 'bg-purple-100 text-purple-800'
-                                                        : item.status === 'lost' || item.type === 'lost'
-                                                            ? 'bg-red-100 text-red-800'
-                                                            : 'bg-green-100 text-green-800'
+                                                    <div className={`absolute top-0.5 sm:top-1 md:top-2 right-0.5 sm:right-1 md:right-2 px-1 sm:px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-[8px] sm:text-xs font-semibold ${
+                                                        item.status === 'claimed'
+                                                            ? 'bg-purple-100 text-purple-800'
+                                                            : (item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found')
+                                                                ? 'bg-green-100 text-green-800'
+                                                                : 'bg-red-100 text-red-800'
                                                         }`}>
-                                                        {item.status === 'claimed' ? 'Claimed' : item.status === 'lost' || item.type === 'lost' ? 'Lost' : 'Found'}
+                                                        {item.status === 'claimed' ? 'Claimed' : (item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') ? 'Found' : 'Lost'}
                                                     </div>
                                                 </div>
 
@@ -495,6 +380,12 @@ function HomePage() {
                                                                 year: 'numeric'
                                                             }) : 'N/A'}</span>
                                                         </div>
+                                                        {item.reporter_name && (
+                                                            <div className="flex items-center gap-1">
+                                                                <User className="h-3 w-3 flex-shrink-0" />
+                                                                <span className="truncate">{item.type === 'lost' ? 'Lost' : 'Found'} by: {item.reporter_name}</span>
+                                                            </div>
+                                                        )}
                                                         {item.status === 'claimed' && item.claimant_name && (
                                                             <div className="flex items-center gap-0.5 sm:gap-1 md:gap-2 text-purple-600 font-medium text-[8px] sm:text-xs">
                                                                 <User className="h-2 w-2 sm:h-3 sm:w-3 md:h-4 md:w-4 flex-shrink-0" />
@@ -532,7 +423,7 @@ function HomePage() {
                         <div className="bg-blue-600/90 backdrop-blur-md border border-blue-500/50 rounded-lg shadow-lg p-4 text-white">
                             <div className="flex items-center gap-2 mb-3">
                                 <FileText className="h-5 w-5" />
-                                <h2 className="text-lg font-bold">How to Claim Lost Items</h2>
+                                <h2 className="text-lg font-bold">How to Claim Items</h2>
                             </div>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {claimInstructions.length > 0 ? (
@@ -554,22 +445,13 @@ function HomePage() {
                                         <p className="text-blue-600 text-lg font-medium">Loading instructions...</p>
                                     </div>
                                 )}
-
-                                {contactInfo && (
-                                    <div className="bg-white rounded-lg p-3 border border-blue-200">
-                                        <h3 className="font-semibold text-blue-800 mb-2 text-sm">📞 Contact Information</h3>
-                                        <div className="text-blue-700 text-xs space-y-1">
-                                            <p><strong className="text-blue-900">Office:</strong> {contactInfo.office_location}</p>
-                                            <p><strong className="text-blue-900">Phone:</strong> {contactInfo.contact_number}</p>
-                                            <p><strong className="text-blue-900">Email:</strong> {contactInfo.email}</p>
-                                            <p><strong className="text-blue-900">Hours:</strong> {contactInfo.office_hours}</p>
-                                        </div>
-                                    </div>
-                                )}
                             </div>
                         </div>
                         <div className="bg-blue-600/90 backdrop-blur-md border border-blue-500/50 rounded-lg shadow-lg p-4 text-white">
-                            <h2 className="text-lg font-bold mb-3">Announcements</h2>
+                            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
+                                <Megaphone className="h-5 w-5" />
+                                Announcements
+                            </h2>
                             <div className="space-y-2 max-h-64 overflow-y-auto">
                                 {announcements.length > 0 ? (
                                     announcements.map((announcement) => (
@@ -595,19 +477,25 @@ function HomePage() {
 
             {/* Item Detail Modal */}
             {showItemModal && selectedItem && (
-                <div className="fixed inset-0 bg-transparent z-50 flex items-start md:items-center justify-center p-0 sm:p-2 md:p-4 pt-8 sm:pt-16 md:pt-4">
-                    <div className="bg-white rounded-t-xl sm:rounded-t-2xl md:rounded-xl shadow-2xl max-w-7xl w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)] md:h-auto md:max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
+                <div className="fixed inset-0 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-0 sm:p-2 md:p-4 pt-8 sm:pt-16 md:pt-4">
+                    <div className="bg-white rounded-t-xl sm:rounded-t-2xl md:rounded-xl shadow-2xl max-w-4xl w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)] md:h-auto md:max-h-[90vh] flex flex-col overflow-hidden" onClick={(e) => e.stopPropagation()}>
                         {/* Header - Fixed */}
-                        <div className="p-1.5 sm:p-2.5 md:p-6 bg-blue-700 flex-shrink-0">
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-1.5 sm:p-2.5 md:p-6 flex-shrink-0">
                             <div className="flex items-start justify-between gap-1 sm:gap-2">
                                 <div className="flex-1 min-w-0">
                                     <h2 className="text-xs sm:text-sm md:text-xl lg:text-2xl font-bold text-white mb-0.5 sm:mb-1 md:mb-2 break-words line-clamp-2">{selectedItem.item_name}</h2>
                                     <div className="flex flex-wrap items-center gap-1 sm:gap-1.5 md:gap-2">
-                                        <span className={`px-1 sm:px-2 md:px-3 py-0.5 md:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold ${selectedItem.status === 'claimed' ? 'bg-purple-500 text-white' : selectedItem.status === 'lost' || selectedItem.type === 'lost' ? 'bg-red-500 text-white' : 'bg-green-500 text-white'}`}>
-                                            {selectedItem.status === 'claimed' ? 'Claimed' : selectedItem.status === 'lost' || selectedItem.type === 'lost' ? 'Lost' : 'Found'}
+                                        <span className={`px-1 sm:px-2 md:px-3 py-0.5 md:py-1 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold ${
+                                            selectedItem.status === 'claimed' 
+                                                ? 'bg-purple-500 text-white' 
+                                                : (selectedItem.status?.toLowerCase() === 'found' || selectedItem.type?.toLowerCase() === 'found')
+                                                    ? 'bg-green-500 text-white' 
+                                                    : 'bg-red-500 text-white'
+                                        }`}>
+                                            {selectedItem.status === 'claimed' ? 'Claimed' : (selectedItem.status?.toLowerCase() === 'found' || selectedItem.type?.toLowerCase() === 'found') ? 'Found' : 'Lost'}
                                         </span>
                                         {selectedItem.category && (
-                                            <span className="px-1 sm:px-2 md:px-3 py-0.5 md:py-1 bg-white text-blue-700 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
+                                            <span className="px-1 sm:px-2 md:px-3 py-0.5 md:py-1 bg-white bg-opacity-90 text-blue-700 rounded-full text-[10px] sm:text-xs md:text-sm font-semibold">
                                                 {selectedItem.category}
                                             </span>
                                         )}
@@ -644,13 +532,12 @@ function HomePage() {
                                             <img
                                                 src={getAssetUrl(selectedItem.image_path || selectedItem.image_url)}
                                                 alt={selectedItem.item_name}
-                                                className="w-full h-32 sm:h-48 md:h-64 lg:h-80 object-contain cursor-pointer hover:opacity-90 transition-opacity bg-gray-100"
+                                                className="w-full h-32 sm:h-48 md:h-56 lg:h-64 object-contain cursor-pointer hover:opacity-90 transition-opacity bg-gray-100"
                                                 onClick={() => setIsFullscreen(true)}
                                                 loading="lazy"
                                                 onError={(e) => {
-                                                    console.log('Modal image failed to load:', selectedItem.image_path || selectedItem.image_url);
                                                     e.target.style.display = 'none';
-                                                    e.target.parentElement.innerHTML = '<div class="w-full h-32 sm:h-48 md:h-64 lg:h-80 bg-gray-100 flex items-center justify-center text-gray-400"><div class="text-center"><div class="text-4xl mb-2">📦</div><p>Image not available</p></div></div>';
+                                                    e.target.parentElement.innerHTML = '<div class="w-full h-32 sm:h-48 md:h-56 lg:h-64 bg-gray-100 flex items-center justify-center text-gray-400"><div class="text-center"><div class="text-4xl mb-2">📦</div><p>Image not available</p></div></div>';
                                                 }}
                                             />
                                         </div>
@@ -715,10 +602,33 @@ function HomePage() {
 
                                             {selectedItem.reporter_name && (
                                                 <div>
-                                                    <h3 className="text-sm font-semibold text-blue-600 uppercase mb-1">Reported By</h3>
+                                                    <h3 className="text-sm font-semibold text-blue-600 uppercase mb-1">{selectedItem.type === 'lost' ? 'Lost' : 'Found'} By</h3>
                                                     <div className="flex items-center gap-2 text-gray-700">
                                                         <User className="h-5 w-5 text-blue-700" />
                                                         <span>{selectedItem.reporter_name}</span>
+                                                    </div>
+                                                </div>
+                                            )}
+
+                                            {/* Finder Information - Show for Lost items marked as Found */}
+                                            {selectedItem.status?.toLowerCase() === 'found' && selectedItem.type?.toLowerCase() === 'lost' && selectedItem.finder_name && (
+                                                <div className="bg-green-50 border border-green-200 rounded-lg p-3">
+                                                    <h3 className="text-sm font-semibold text-green-700 uppercase mb-2">Found By</h3>
+                                                    <div className="space-y-2">
+                                                        <div className="flex items-center gap-2 text-green-800">
+                                                            <User className="h-5 w-5 text-green-600" />
+                                                            <span className="font-medium">{selectedItem.finder_name}</span>
+                                                        </div>
+                                                        {selectedItem.finder_student_id && (
+                                                            <div className="text-sm text-green-700">
+                                                                <span className="font-semibold">Student ID:</span> {selectedItem.finder_student_id}
+                                                            </div>
+                                                        )}
+                                                        {selectedItem.finder_contact && (
+                                                            <div className="text-sm text-green-700">
+                                                                <span className="font-semibold">Contact:</span> {selectedItem.finder_contact}
+                                                            </div>
+                                                        )}
                                                     </div>
                                                 </div>
                                             )}
@@ -735,13 +645,39 @@ function HomePage() {
                                         </div>
                                     </div>
 
+                                    {/* Special Message for Lost Items Marked as Found */}
+                                    {selectedItem.status?.toLowerCase() === 'found' && selectedItem.type?.toLowerCase() === 'lost' && selectedItem.status !== 'claimed' && (
+                                        <div className="bg-green-50 border-l-4 border-green-600 p-4 rounded-r-lg mt-4">
+                                            <h3 className="font-bold text-green-800 mb-2">📍 Item Has Been Found!</h3>
+                                            <p className="text-green-700 text-sm mb-2">
+                                                Good news! This lost item has been found and is now available for claiming.
+                                            </p>
+                                            <div className="bg-white border border-green-200 rounded-lg p-3 mt-3">
+                                                <p className="text-green-900 font-semibold text-sm">
+                                                    📌 Please proceed to the <span className="text-green-700 font-bold">Student Council Office</span> to claim this item.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    )}
+
                                     {/* Additional Info */}
                                     {selectedItem.status !== 'claimed' && (
                                         <div className="bg-blue-50 border-l-4 border-blue-700 p-4 rounded-r-lg mt-4">
-                                            <h3 className="font-bold text-blue-800 mb-2">✅ Want to claim this item?</h3>
-                                            <p className="text-blue-700 text-sm">
-                                                Click "YES" below to get instruction on how to claim this item.
-                                            </p>
+                                            {(selectedItem.status?.toLowerCase() === 'found' || selectedItem.type?.toLowerCase() === 'found') ? (
+                                                <>
+                                                    <h3 className="font-bold text-blue-800 mb-2">Want to claim this item?</h3>
+                                                    <p className="text-blue-700 text-sm">
+                                                        Click "YES" below to get instruction on how to claim this item.
+                                                    </p>
+                                                </>
+                                            ) : (
+                                                <>
+                                                    <h3 className="font-bold text-blue-800 mb-2">Have you found this item?</h3>
+                                                    <p className="text-blue-700 text-sm">
+                                                        If you have found this item, please click "YES" below to get instructions on how to return it to the owner.
+                                                    </p>
+                                                </>
+                                            )}
                                         </div>
                                     )}
                                 </div>
@@ -749,12 +685,40 @@ function HomePage() {
                         </div>
 
                         {/* Footer - Fixed at bottom */}
-                        <div className="bg-blue-50 p-4 rounded-b-xl border-t border-blue-200 flex-shrink-0">
+                        <div className="bg-white p-4 rounded-b-xl border-t border-gray-200 flex-shrink-0 flex justify-center">
                             <button
                                 onClick={handleClaimItem}
-                                className="w-full px-6 py-3 bg-blue-700 hover:bg-blue-800 text-white rounded-lg transition-colors font-medium"
+                                className="px-8 py-2 bg-blue-700 hover:bg-blue-800 text-white rounded-lg transition-colors font-medium text-sm"
                             >
                                 YES
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Message Modal */}
+            {showMessageModal && (
+                <div className="fixed inset-0 backdrop-blur-sm z-50 flex items-center justify-center p-4" onClick={closeMessageModal}>
+                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
+                        <div className="flex items-start justify-between mb-4">
+                            <h3 className="text-xl font-bold text-blue-700">Message</h3>
+                            <button
+                                onClick={closeMessageModal}
+                                className="text-gray-600 hover:text-gray-800 transition-colors p-1 hover:bg-gray-100 rounded"
+                            >
+                                <X className="w-5 h-5" />
+                            </button>
+                        </div>
+                        <div className="mb-6">
+                            <p className="text-gray-700 leading-relaxed">{messageContent}</p>
+                        </div>
+                        <div className="flex justify-end">
+                            <button
+                                onClick={closeMessageModal}
+                                className="px-6 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                            >
+                                OK
                             </button>
                         </div>
                     </div>
@@ -817,13 +781,83 @@ function HomePage() {
                         onClick={(e) => e.stopPropagation()}
                         loading="lazy"
                         onError={(e) => {
-                            console.log('Fullscreen image failed to load:', selectedItem.image_path || selectedItem.image_url);
                             e.target.style.display = 'none';
                             e.target.parentElement.innerHTML = '<div class="max-w-full max-h-full flex items-center justify-center text-white"><div class="text-center"><div class="text-6xl mb-4">📦</div><p class="text-xl">Image not available</p></div></div>';
                         }}
                     />
                 </div>
             )}
+
+            {/* Footer */}
+            <footer className="bg-blue-600 text-white mt-auto">
+                <div className="container mx-auto px-4 py-8">
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                        {/* Office Hours */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <Clock className="h-5 w-5" />
+                                <h3 className="text-lg font-bold">OFFICE HOURS</h3>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                                <p>Monday - Friday: 8:00 AM - 5:00 PM</p>
+                                <p>Saturday - Sunday: CLOSED</p>
+                            </div>
+                        </div>
+
+                        {/* Contact Us */}
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <Mail className="h-5 w-5" />
+                                <h3 className="text-lg font-bold">CONTACT US</h3>
+                            </div>
+                            <div className="space-y-2 text-sm">
+                                {contactInfo ? (
+                                    <>
+                                        <div className="flex items-start gap-2">
+                                            <Mail className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                            <span>{contactInfo.email || 'norzagaraycollege.edu.ph'}</span>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                            <Building2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                            <a 
+                                                href="https://www.facebook.com/profile.php?id=100063821722265"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="hover:underline hover:text-blue-200 transition-colors"
+                                            >
+                                                {contactInfo.office_location || 'Norzagaray, Bulacan'}
+                                            </a>
+                                        </div>
+                                    </>
+                                ) : (
+                                    <>
+                                        <div className="flex items-start gap-2">
+                                            <Mail className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                            <span>norzagaraycollege.edu.ph</span>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                            <Building2 className="h-4 w-4 mt-0.5 flex-shrink-0" />
+                                            <a 
+                                                href="https://www.facebook.com/profile.php?id=100063821722265"
+                                                target="_blank"
+                                                rel="noopener noreferrer"
+                                                className="hover:underline hover:text-blue-200 transition-colors"
+                                            >
+                                                Norzagaray, Bulacan
+                                            </a>
+                                        </div>
+                                    </>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+
+                    {/* Copyright */}
+                    <div className="border-t border-blue-500 mt-8 pt-4 text-center text-sm">
+                        <p>© 2025 Norzagaray College</p>
+                    </div>
+                </div>
+            </footer>
         </div>
     );
 }

@@ -1,7 +1,8 @@
 // src/admin/ManageItems.jsx
 import { useState, useEffect } from 'react';
-import { Search, Filter, Eye, Edit, Trash2, CheckCircle, XCircle, X, MapPin, Calendar, User, Phone, Mail, Maximize2, ZoomIn, ZoomOut, Package, Archive, History } from 'lucide-react';
+import { Search, Filter, Eye, Edit, CheckCircle, X, MapPin, Calendar, User, Maximize2, ZoomIn, ZoomOut, Package, Archive, History, RefreshCw } from 'lucide-react';
 import { API_ENDPOINTS, getAssetUrl } from '../utils/api';
+import { SuccessModal, ErrorModal, ConfirmModal } from '../components/Modals';
 
 function ManageItems() {
     const [searchTerm, setSearchTerm] = useState('');
@@ -19,11 +20,35 @@ function ManageItems() {
     const [claimantInfo, setClaimantInfo] = useState({
         name: '',
         student_id: '',
-        contact: ''
+        contact: '',
+        claim_date: new Date().toISOString().split('T')[0],
+        claim_time: new Date().toTimeString().split(' ')[0].substring(0, 5)
     });
     const [validationErrors, setValidationErrors] = useState({});
     const [showClaimedItemsModal, setShowClaimedItemsModal] = useState(false);
     const [claimedItems, setClaimedItems] = useState([]);
+    const [showFoundModal, setShowFoundModal] = useState(false);
+    
+    // Modal states for messages
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [showError, setShowError] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
+    const [confirmAction, setConfirmAction] = useState(null);
+    const [confirmMessage, setConfirmMessage] = useState('');
+    const [confirmTitle, setConfirmTitle] = useState('Confirm Action');
+    const [confirmType, setConfirmType] = useState('warning');
+    
+    const [finderInfo, setFinderInfo] = useState({
+        name: '',
+        student_id: '',
+        contact: ''
+    });
+
+    // History/Audit log states
+    const [itemHistory, setItemHistory] = useState([]);
+    const [loadingHistory, setLoadingHistory] = useState(false);
 
     const handleStatusChange = async (id, newStatus) => {
         try {
@@ -56,63 +81,152 @@ function ManageItems() {
                         item.id === id ? { ...item, status: newStatus } : item
                     ));
                 }
-                alert(`Item ${newStatus} successfully!`);
+                setSuccessMessage(`Item ${newStatus} successfully!`);
+                setShowSuccess(true);
             } else {
-                alert(`Failed to update item: ${data.message}`);
+                setErrorMessage(`Failed to update item: ${data.message}`);
+                setShowError(true);
             }
         } catch (error) {
-            console.error('Error updating status:', error);
-            alert('Network error occurred while updating item');
+            setErrorMessage('Network error occurred while updating item');
+            setShowError(true);
         }
+    };
+
+    const handleMarkAsFound = async (e) => {
+        e.preventDefault();
+        
+        // Validate finder info
+        if (!finderInfo.name || !finderInfo.student_id) {
+            setErrorMessage('Please fill in all required fields (Name and Student ID)');
+            setShowError(true);
+            return;
+        }
+
+        // Validate student ID format
+        if (!/^\d{4}-\d{4}$/.test(finderInfo.student_id)) {
+            setErrorMessage('Student ID must be in format: 1234-5678');
+            setShowError(true);
+            return;
+        }
+
+        try {
+            const response = await fetch(API_ENDPOINTS.ITEMS.BY_ID(selectedItem.id), {
+                method: 'PUT',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    type: 'found',
+                    status: 'found',
+                    finder_name: finderInfo.name,
+                    finder_student_id: finderInfo.student_id,
+                    finder_contact: finderInfo.contact
+                })
+            });
+
+            const data = await response.json();
+
+            if (data.success) {
+                setSuccessMessage('Item marked as Found successfully!');
+                setShowSuccess(true);
+                setShowFoundModal(false);
+                setShowModal(false);
+                setFinderInfo({ name: '', student_id: '', contact: '' });
+                // Refetch items to get updated data from server
+                await fetchItems();
+            } else {
+                setErrorMessage(`Failed to mark item as found: ${data.message}`);
+                setShowError(true);
+            }
+        } catch (error) {
+            setErrorMessage('Network error occurred while marking item as found');
+            setShowError(true);
+        }
+    };
+
+    const handleArchiveClick = (id) => {
+        setConfirmAction(() => () => handleArchive(id));
+        setConfirmMessage('Are you sure you want to archive this item? You can restore it later from the Archived Items section.');
+        setConfirmTitle('Archive Item');
+        setConfirmType('warning');
+        setShowConfirm(true);
     };
 
     const handleArchive = async (id) => {
-        if (window.confirm('Are you sure you want to archive this item? You can restore it later from the Archived Items section.')) {
-            try {
-                const response = await fetch(API_ENDPOINTS.ITEMS.ARCHIVE(id));
-                const data = await response.json();
+        try {
+            const response = await fetch(API_ENDPOINTS.ITEMS.ARCHIVE(id));
+            const data = await response.json();
 
-                if (data.success) {
-                    setItems(items.filter(item => item.id !== id));
-                    alert('Item archived successfully!');
-                } else {
-                    alert(`Failed to archive item: ${data.message}`);
-                }
-            } catch (error) {
-                console.error('Error archiving item:', error);
-                alert('Network error occurred while archiving item');
+            if (data.success) {
+                setItems(items.filter(item => item.id !== id));
+                setSuccessMessage('Item archived successfully!');
+                setShowSuccess(true);
+            } else {
+                setErrorMessage(`Failed to archive item: ${data.message}`);
+                setShowError(true);
             }
+        } catch (error) {
+            setErrorMessage('Network error occurred while archiving item');
+            setShowError(true);
         }
     };
 
-    const handleDelete = async (id) => {
-        if (window.confirm('Are you sure you want to delete this item?')) {
-            try {
-                const response = await fetch(API_ENDPOINTS.ITEMS.BY_ID(id), {
-                    method: 'DELETE'
-                });
+    const handleDeleteClick = (id) => {
+        setConfirmAction(() => () => handleDelete(id));
+        setConfirmMessage('Are you sure you want to permanently delete this item? This action cannot be undone.');
+        setConfirmTitle('Delete Item');
+        setConfirmType('danger');
+        setShowConfirm(true);
+    };
 
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data.success) {
-                        setItems(items.filter(item => item.id !== id));
-                        alert(`Item ${id} deleted successfully`);
-                    } else {
-                        alert(`Failed to delete item: ${data.message}`);
-                    }
+    const handleDelete = async (id) => {
+        try {
+            const response = await fetch(API_ENDPOINTS.ITEMS.BY_ID(id), {
+                method: 'DELETE'
+            });
+
+            if (response.ok) {
+                const data = await response.json();
+                if (data.success) {
+                    setItems(items.filter(item => item.id !== id));
+                    setSuccessMessage(`Item ${id} deleted successfully`);
+                    setShowSuccess(true);
                 } else {
-                    alert('Failed to delete item. Please try again.');
+                    setErrorMessage(`Failed to delete item: ${data.message}`);
+                    setShowError(true);
                 }
-            } catch (error) {
-                console.error('Error deleting item:', error);
-                alert('Error deleting item. Please try again.');
+            } else {
+                setErrorMessage('Failed to delete item. Please try again.');
+                setShowError(true);
             }
+        } catch (error) {
+            setErrorMessage('Error deleting item. Please try again.');
+            setShowError(true);
+        }
+    };
+
+    const fetchItemHistory = async (itemId) => {
+        setLoadingHistory(true);
+        try {
+            const response = await fetch(API_ENDPOINTS.ITEMS.HISTORY(itemId));
+            const data = await response.json();
+            
+            if (data.success) {
+                setItemHistory(data.history || []);
+            } else {
+                setItemHistory([]);
+            }
+        } catch (error) {
+            setItemHistory([]);
+        } finally {
+            setLoadingHistory(false);
         }
     };
 
     const handleView = (item) => {
         setSelectedItem(item);
         setShowModal(true);
+        // Fetch history when opening modal
+        fetchItemHistory(item.id);
     };
 
     const handleClaimSubmit = async (e) => {
@@ -120,18 +234,21 @@ function ManageItems() {
 
         // Check for validation errors
         if (Object.values(validationErrors).some(error => error !== '')) {
-            alert('Please fix all validation errors before submitting');
+            setErrorMessage('Please fix all validation errors before submitting');
+            setShowError(true);
             return;
         }
 
         if (!claimantInfo.name || !claimantInfo.student_id) {
-            alert('Please fill in at least Name and Student ID');
+            setErrorMessage('Please fill in at least Name and Student ID');
+            setShowError(true);
             return;
         }
 
         // Validate student ID format
         if (!/^\d{4}-\d{4}$/.test(claimantInfo.student_id)) {
-            alert('Student ID must be in format: 1234-5678');
+            setErrorMessage('Student ID must be in format: 1234-5678');
+            setShowError(true);
             return;
         }
 
@@ -169,16 +286,18 @@ function ManageItems() {
                 setItems(prev => prev.filter(item => item.id !== selectedItem.id));
                 setClaimedItems(prev => [...prev, updatedItem]);
 
-                alert('Item marked as claimed successfully!');
+                setSuccessMessage('Item marked as claimed successfully!');
+                setShowSuccess(true);
                 setShowClaimModal(false);
                 setClaimantInfo({ name: '', student_id: '', contact: '', email: '' });
                 fetchItems(); // Refresh the list
             } else {
-                alert(`Failed to mark as claimed: ${data.message}`);
+                setErrorMessage(`Failed to mark as claimed: ${data.message}`);
+                setShowError(true);
             }
         } catch (error) {
-            console.error('Error marking item as claimed:', error);
-            alert('Error marking item as claimed. Please try again.');
+            setErrorMessage('Error marking item as claimed. Please try again.');
+            setShowError(true);
         }
     };
 
@@ -187,6 +306,12 @@ function ManageItems() {
         setSelectedItem(null);
         setIsFullscreen(false);
         setZoomLevel(1);
+    };
+
+    const closeClaimModal = () => {
+        setShowClaimModal(false);
+        setClaimantInfo({ name: '', student_id: '', contact: '', email: '' });
+        setValidationErrors({});
     };
 
     // Fetch items from database
@@ -203,7 +328,8 @@ function ManageItems() {
                         itemName: item.item_name,
                         description: item.description,
                         location: item.location,
-                        status: item.status || 'Pending',
+                        category: item.category || null,
+                        status: item.status || item.type,
                         reportedBy: item.reporter_name || item.full_name || 'Anonymous',
                         contactInfo: item.contact_info || item.email || 'N/A',
                         reportedDate: item.created_at,
@@ -212,6 +338,7 @@ function ManageItems() {
                         item_name: item.item_name,
                         date_reported: item.date_reported,
                         reporter_name: item.reporter_name || item.full_name || 'Unknown',
+                        student_id: item.student_id || null,
                         contact_info: item.contact_info || item.email || 'N/A',
                         // Add reference number for claimed items
                         reference_number: item.reference_number || null,
@@ -219,39 +346,23 @@ function ManageItems() {
                         claimant_name: item.claimant_name || null,
                         claimant_student_id: item.claimant_student_id || null,
                         claimant_contact: item.claimant_contact || null,
-                        claimant_email: item.claimant_email || null
+                        claimant_email: item.claimant_email || null,
+                        // Add finder information for found items
+                        finder_name: item.finder_name || null,
+                        finder_student_id: item.finder_student_id || null,
+                        finder_contact: item.finder_contact || null
                     }));
-                    setItems(transformedItems);
 
                     // Separate claimed items
                     const claimed = transformedItems.filter(item => item.status?.toLowerCase() === 'claimed');
                     setClaimedItems(claimed);
-                    console.log('Fetched items:', transformedItems); // Debug log
-                    console.log('Image analysis:', {
-                        totalItems: transformedItems.length,
-                        lostItems: transformedItems.filter(item => item.type === 'Lost').length,
-                        foundItems: transformedItems.filter(item => item.type === 'Found').length,
-                        lostWithImages: transformedItems.filter(item => item.type === 'Lost' && item.imagePath).length,
-                        foundWithImages: transformedItems.filter(item => item.type === 'Found' && item.imagePath).length,
-                        lostImagePaths: transformedItems.filter(item => item.type === 'Lost').map(item => item.imagePath),
-                        foundImagePaths: transformedItems.filter(item => item.type === 'Found').map(item => item.imagePath),
-                        lostItemsData: transformedItems.filter(item => item.type === 'Lost'),
-                        foundItemsData: transformedItems.filter(item => item.type === 'Found')
-                    });
-                    console.log('Status counts:', {
-                        pending: transformedItems.filter(item => item.status?.toLowerCase() === 'pending').length,
-                        approved: transformedItems.filter(item => item.status?.toLowerCase() === 'approved').length,
-                        claimed: transformedItems.filter(item => item.status?.toLowerCase() === 'claimed').length,
-                        rejected: transformedItems.filter(item => item.status?.toLowerCase() === 'rejected').length,
-                        total: transformedItems.length
-                    });
+                    setItems(transformedItems);
                 } else {
-                    console.error('Failed to fetch items:', data.message);
                     setItems([]); // Set empty array if fetch fails
                 }
             }
         } catch (error) {
-            console.error('Error fetching items:', error);
+            setItems([]);
         } finally {
             setLoading(false);
         }
@@ -260,6 +371,25 @@ function ManageItems() {
     useEffect(() => {
         fetchItems();
         fetchCategories();
+
+        // Add event listener to refresh data when window gains focus or tab becomes visible
+        const handleFocus = () => {
+            fetchItems();
+        };
+
+        const handleVisibilityChange = () => {
+            if (!document.hidden) {
+                fetchItems();
+            }
+        };
+
+        window.addEventListener('focus', handleFocus);
+        document.addEventListener('visibilitychange', handleVisibilityChange);
+
+        return () => {
+            window.removeEventListener('focus', handleFocus);
+            document.removeEventListener('visibilitychange', handleVisibilityChange);
+        };
     }, []);
 
     const fetchCategories = async () => {
@@ -270,7 +400,7 @@ function ManageItems() {
                 setCategories(data.categories || []);
             }
         } catch (error) {
-            console.error('Error fetching categories:', error);
+            // Error fetching categories
         }
     };
 
@@ -288,10 +418,10 @@ function ManageItems() {
 
     const getStatusBadge = (status) => {
         const statusColors = {
-            'Pending': 'bg-yellow-100 text-yellow-800',
-            'Approved': 'bg-green-100 text-green-800',
             'Claimed': 'bg-blue-100 text-blue-800',
-            'Rejected': 'bg-red-100 text-red-800'
+            'Found': 'bg-green-100 text-green-800',
+            'Lost': 'bg-red-100 text-red-800',
+            'Archived': 'bg-gray-100 text-gray-800'
         };
         return statusColors[status] || 'bg-gray-100 text-gray-800';
     };
@@ -311,31 +441,52 @@ function ManageItems() {
                         <h1 className="text-xl font-bold text-gray-800 mb-1">Manage Items</h1>
                         <p className="text-sm text-gray-600">Manage all reported lost and found items</p>
                     </div>
-                    <button
-                        onClick={() => setShowClaimedItemsModal(true)}
-                        data-claimed-history-btn
-                        className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
-                    >
-                        <History className="h-4 w-4" />
-                        <span>Claim Items</span>
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => fetchItems()}
+                            disabled={loading}
+                            className="flex items-center gap-1 px-2 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors text-sm disabled:opacity-50"
+                            title="Refresh items"
+                        >
+                            <RefreshCw className={`h-4 w-4 ${loading ? 'animate-spin' : ''}`} />
+                        </button>
+                        <button
+                            onClick={() => setShowClaimedItemsModal(true)}
+                            data-claimed-history-btn
+                            className="flex items-center gap-2 px-3 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium text-sm"
+                        >
+                            <History className="h-4 w-4" />
+                            <span>Claim Items</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
             <div className="hidden md:block mb-6">
                 <div className="flex justify-between items-start">
                     <div>
-                        <h1 className="text-2xl md:text-3xl font-bold text-gray-800 mb-2 break-words">Manage Items</h1>
-                        <p className="text-sm md:text-base text-gray-600">Manage all reported lost and found items</p>
+                        <h1 className="text-2xl font-bold text-gray-800">Claim Management</h1>
+                        <p className="text-sm text-gray-500">Dashboard / Claim Management</p>
                     </div>
-                    <button
-                        onClick={() => setShowClaimedItemsModal(true)}
-                        data-claimed-history-btn
-                        className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
-                    >
-                        <History className="h-5 w-5" />
-                        <span>Claim Items</span>
-                    </button>
+                    <div className="flex gap-2">
+                        <button
+                            onClick={() => fetchItems()}
+                            disabled={loading}
+                            className="flex items-center gap-2 px-3 py-2 bg-gray-100 hover:bg-gray-200 text-gray-700 rounded-lg transition-colors disabled:opacity-50"
+                            title="Refresh items"
+                        >
+                            <RefreshCw className={`h-5 w-5 ${loading ? 'animate-spin' : ''}`} />
+                            <span>Refresh</span>
+                        </button>
+                        <button
+                            onClick={() => setShowClaimedItemsModal(true)}
+                            data-claimed-history-btn
+                            className="flex items-center gap-2 px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                        >
+                            <History className="h-5 w-5" />
+                            <span>Claim Items</span>
+                        </button>
+                    </div>
                 </div>
             </div>
 
@@ -477,40 +628,62 @@ function ManageItems() {
                                     </div>
                                     <div className="flex items-center gap-2">
                                         <User className="h-3 w-3 md:h-4 flex-shrink-0" />
-                                        <span className="truncate">By: {item.reporter_name || item.reportedBy || 'Unknown'}</span>
+                                        <span className="truncate">
+                                            {(item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') 
+                                                ? `Found by: ${item.finder_name || item.reporter_name || item.reportedBy || 'Unknown'}`
+                                                : `Lost by: ${item.reporter_name || item.reportedBy || 'Unknown'}`
+                                            }
+                                        </span>
                                     </div>
                                 </div>
 
-                                <div className="flex flex-col gap-1.5 mt-2">
+                                <div className="flex flex-col gap-2 mt-2">
+                                    {/* View Details - Full Width */}
                                     <button
                                         onClick={() => handleView(item)}
-                                        className="w-full px-2 py-1.5 text-xs md:text-sm font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                                        className="w-full px-2 py-1.5 text-xs font-medium bg-blue-600 text-white rounded-md hover:bg-blue-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
+                                        style={{ minHeight: '32px', maxHeight: '32px' }}
                                     >
-                                        <Eye className="h-3 w-3 md:h-4 group-hover:scale-110 transition-transform" />
+                                        <Eye className="h-3 w-3 group-hover:scale-110 transition-transform" />
                                         <span>View Details</span>
                                     </button>
 
-                                    {(item.status?.toLowerCase() === 'approved' || item.status?.toLowerCase() === 'lost' || item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') && item.status?.toLowerCase() !== 'claimed' && (
-                                        <button
-                                            onClick={() => {
-                                                setSelectedItem(item);
-                                                setShowClaimModal(true);
-                                            }}
-                                            className="w-full px-2 py-1.5 text-xs md:text-sm font-medium bg-purple-600 text-white rounded-md hover:bg-purple-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
-                                        >
-                                            <CheckCircle className="h-3 w-3 md:h-4 group-hover:scale-110 transition-transform" />
-                                            <span>Mark as Claimed</span>
-                                        </button>
-                                    )}
+                                    {/* Mark as Claimed and Archive - Side by Side */}
+                                    <div className="flex gap-2">
+                                        {item.status?.toLowerCase() !== 'claimed' && (
+                                            <button
+                                                onClick={() => {
+                                                    if (item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') {
+                                                        setSelectedItem(item);
+                                                        setShowClaimModal(true);
+                                                    }
+                                                }}
+                                                disabled={!(item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found')}
+                                                className={`flex-1 px-2 py-1.5 text-xs font-medium rounded-md transition-all duration-200 flex items-center justify-center gap-1.5 group ${
+                                                    (item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found')
+                                                        ? 'bg-blue-600 text-white hover:bg-blue-700 hover:shadow-md cursor-pointer'
+                                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed opacity-60'
+                                                }`}
+                                                title={!(item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') ? 'Item must be marked as Found first' : ''}
+                                                style={{ minHeight: '32px', maxHeight: '32px' }}
+                                            >
+                                                <CheckCircle className="h-3 w-3" />
+                                                <span>Mark as Claimed</span>
+                                            </button>
+                                        )}
 
-                                    <button
-                                        onClick={() => handleArchive(item.id)}
-                                        className="w-full px-2 py-1.5 text-xs md:text-sm font-medium bg-gray-600 text-white rounded-md hover:bg-gray-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group"
-                                        title="Move item to archive section"
-                                    >
-                                        <Archive className="h-3 w-3 md:h-4 group-hover:scale-110 transition-transform" />
-                                        <span>Move to Archive</span>
-                                    </button>
+                                        <button
+                                            onClick={() => handleArchiveClick(item.id)}
+                                            className={`px-2 py-1.5 text-xs font-medium bg-gray-600 text-white rounded-md hover:bg-gray-700 hover:shadow-md transition-all duration-200 flex items-center justify-center gap-1.5 group ${
+                                                item.status?.toLowerCase() !== 'claimed' ? 'flex-1' : 'w-full'
+                                            }`}
+                                            title="Move item to archive section"
+                                            style={{ minHeight: '32px', maxHeight: '32px' }}
+                                        >
+                                            <Archive className="h-3 w-3 group-hover:scale-110 transition-transform" />
+                                            <span>Move to Archive</span>
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -520,54 +693,45 @@ function ManageItems() {
 
             {/* Item Details Modal - Landscape Layout */}
             {showModal && selectedItem && (
-                <>
-                    {/* Transparent Overlay - Blocks background clicks but keeps it visible */}
+                <div
+                    className="fixed inset-0 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-0 sm:p-2 md:p-4 pt-8 sm:pt-16 md:pt-4"
+                    onClick={closeModal}
+                >
                     <div
-                        className="fixed inset-0 z-40"
-                        style={{ pointerEvents: 'auto' }}
+                        className="bg-white rounded-t-xl sm:rounded-t-2xl md:rounded-xl shadow-2xl max-w-3xl w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)] md:h-auto md:max-h-[85vh] flex flex-col overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
-                    ></div>
-
-                    {/* Modal Content */}
-                    <div
-                        className="fixed inset-0 flex items-start md:items-center justify-center z-50 p-0 md:p-4 pt-16 md:pt-4"
-                        onClick={closeModal}
                     >
-                        <div
-                            className="bg-white rounded-t-2xl md:rounded-xl shadow-2xl max-w-5xl w-full h-[calc(100vh-4rem)] md:h-auto md:max-h-[85vh] transform transition-all duration-300 scale-100 animate-fade-in flex flex-col overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {/* Modal Header - Fixed */}
-                            <div className={`text-white p-2.5 md:p-4 flex-shrink-0 ${selectedItem.type === 'Lost' ? 'bg-gradient-to-r from-red-600 to-red-700' : 'bg-gradient-to-r from-green-600 to-green-700'}`}>
-                                <div className="flex justify-between items-start gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <h2 className="text-sm md:text-lg lg:text-xl font-bold mb-1 break-words line-clamp-1 md:line-clamp-2">
-                                            {selectedItem.item_name || selectedItem.itemName}
-                                        </h2>
-                                        <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
-                                            <span className={`inline-flex px-1.5 md:px-3 py-0.5 text-xs md:text-sm font-semibold rounded-full ${getStatusBadge(selectedItem.status)}`}>
-                                                {selectedItem.status}
+                        {/* Modal Header - Fixed */}
+                        <div className={`text-white p-2.5 md:p-4 flex-shrink-0 ${selectedItem.type === 'Lost' ? 'bg-gradient-to-r from-red-600 to-red-700' : 'bg-gradient-to-r from-green-600 to-green-700'}`}>
+                            <div className="flex justify-between items-start gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-sm md:text-lg lg:text-xl font-bold mb-1 break-words line-clamp-1 md:line-clamp-2">
+                                        {selectedItem.item_name || selectedItem.itemName}
+                                    </h2>
+                                    <div className="flex flex-wrap items-center gap-1.5 md:gap-2">
+                                        <span className={`inline-flex px-1.5 md:px-3 py-0.5 text-xs md:text-sm font-semibold rounded-full ${getStatusBadge(selectedItem.status)}`}>
+                                            {selectedItem.status}
+                                        </span>
+                                        {selectedItem.category && (
+                                            <span className="inline-flex px-1.5 md:px-3 py-0.5 text-xs md:text-sm font-semibold rounded-full bg-purple-100 text-purple-800">
+                                                {selectedItem.category}
                                             </span>
-                                            {selectedItem.category && (
-                                                <span className="inline-flex px-1.5 md:px-3 py-0.5 text-xs md:text-sm font-semibold rounded-full bg-purple-100 text-purple-800">
-                                                    {selectedItem.category}
-                                                </span>
-                                            )}
-                                        </div>
+                                        )}
                                     </div>
-                                    <button
-                                        onClick={closeModal}
-                                        className="text-white hover:text-gray-200 transition-colors p-0.5 md:p-1.5 hover:bg-white hover:bg-opacity-20 rounded flex-shrink-0"
-                                    >
-                                        <X className="w-4 h-4 md:w-6 md:h-6" />
-                                    </button>
                                 </div>
+                                <button
+                                    onClick={closeModal}
+                                    className="text-white hover:text-gray-200 transition-colors p-0.5 md:p-1.5 hover:bg-white hover:bg-opacity-20 rounded flex-shrink-0"
+                                >
+                                    <X className="w-4 h-4 md:w-6 md:w-6" />
+                                </button>
                             </div>
+                        </div>
 
-                            {/* Modal Body - Scrollable */}
-                            <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
-                                {/* Image Section */}
-                                <div className="w-full md:w-2/5 bg-gray-50 flex flex-col md:border-r border-gray-200 relative">
+                        {/* Modal Body - Scrollable */}
+                        <div className="flex flex-col md:flex-row flex-1 overflow-y-auto md:overflow-hidden">
+                            {/* Image Section */}
+                            <div className="w-full md:w-2/5 bg-gray-50 flex flex-col md:border-r border-gray-200 relative">
                                     {selectedItem.imagePath && selectedItem.imagePath !== 'NULL' && selectedItem.imagePath !== 'null' && selectedItem.imagePath !== '' ? (
                                         <div className="relative w-full h-full flex flex-col">
                                             {/* Top Button - Fullscreen */}
@@ -600,13 +764,13 @@ function ManageItems() {
                                         <p className="text-gray-500 text-lg font-medium">No image attached</p>
                                         <p className="text-gray-400 text-sm">Image not provided for this item</p>
                                     </div>
-                                </div>
+                            </div>
 
-                                {/* Details Section */}
-                                <div className="w-full md:w-3/5 p-3 md:p-6 flex flex-col md:overflow-y-auto">
-                                    <div className="flex-1 space-y-3 md:space-y-4">
-                                        {/* Description */}
-                                        <div className="bg-gray-50 rounded-lg p-3 md:p-4">
+                            {/* Details Section */}
+                            <div className="w-full md:w-3/5 p-3 md:p-6 flex flex-col md:overflow-y-auto">
+                                <div className="flex-1 space-y-3 md:space-y-4">
+                                    {/* Description */}
+                                    <div className="bg-gray-50 rounded-lg p-3 md:p-4">
                                             <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-2 flex items-center">
                                                 <Edit className="h-3 w-3 md:h-4 md:w-4 mr-2 text-blue-600 flex-shrink-0" />
                                                 <span>Description</span>
@@ -645,17 +809,23 @@ function ManageItems() {
                                             </div>
                                         </div>
 
-                                        {/* Reporter Information */}
+                                        {/* Lost By Information */}
                                         <div className="bg-gray-50 rounded-lg p-3 md:p-4">
                                             <h3 className="text-sm md:text-base font-semibold text-gray-800 mb-3 flex items-center">
                                                 <User className="h-3 w-3 md:h-4 md:w-4 mr-2 text-purple-600 flex-shrink-0" />
-                                                <span>Reporter Information</span>
+                                                <span>Lost By</span>
                                             </h3>
                                             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
                                                 <div>
-                                                    <p className="text-xs text-gray-600 mb-1">Reporter Name</p>
+                                                    <p className="text-xs text-gray-600 mb-1">Name</p>
                                                     <p className="text-gray-800 font-medium text-xs md:text-sm break-words">
                                                         {selectedItem.reporter_name || selectedItem.reportedBy || 'Not provided'}
+                                                    </p>
+                                                </div>
+                                                <div>
+                                                    <p className="text-xs text-gray-600 mb-1">Student ID</p>
+                                                    <p className="text-gray-800 font-medium text-xs md:text-sm break-words">
+                                                        {selectedItem.student_id || 'Not provided'}
                                                     </p>
                                                 </div>
                                                 <div>
@@ -666,130 +836,153 @@ function ManageItems() {
                                                 </div>
                                             </div>
                                         </div>
-                                    </div>
 
-                                    {/* Action Buttons */}
-                                    <div className="flex flex-col md:flex-row md:flex-wrap gap-2 md:gap-3 pt-3 md:pt-4 mt-3 md:mt-4 border-t border-gray-200">
-                                        {selectedItem.status?.toLowerCase() === 'pending' && (
-                                            <>
-                                                <button
-                                                    onClick={() => {
-                                                        handleStatusChange(selectedItem.id, 'Approved');
-                                                        closeModal();
-                                                    }}
-                                                    className={`hover:opacity-90 text-white px-3 md:px-4 py-2 rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm md:text-base w-full md:w-auto ${selectedItem.type === 'Lost' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
-                                                >
-                                                    <CheckCircle size={16} />
-                                                    <span>Approve</span>
-                                                </button>
-                                                <button
-                                                    onClick={() => {
-                                                        handleStatusChange(selectedItem.id, 'Rejected');
-                                                        closeModal();
-                                                    }}
-                                                    className="bg-gray-600 hover:bg-gray-700 text-white px-3 md:px-4 py-2 rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm md:text-base w-full md:w-auto"
-                                                >
-                                                    <XCircle size={16} />
-                                                    <span>Reject</span>
-                                                </button>
-                                            </>
+                                        {/* Finder Information - Show only for Found items */}
+                                        {selectedItem.type?.toLowerCase() === 'found' && (selectedItem.finder_name || selectedItem.finder_student_id || selectedItem.finder_contact) && (
+                                            <div className="mt-4 p-4 bg-green-50 rounded-lg border border-green-200">
+                                                <h5 className="font-semibold text-green-900 mb-3 text-sm md:text-base">Finder Information</h5>
+                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                                                    {selectedItem.finder_name && (
+                                                        <div>
+                                                            <p className="text-xs text-green-700 mb-1">Name</p>
+                                                            <p className="text-green-900 font-medium text-xs md:text-sm break-words">
+                                                                {selectedItem.finder_name}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {selectedItem.finder_student_id && (
+                                                        <div>
+                                                            <p className="text-xs text-green-700 mb-1">Student ID</p>
+                                                            <p className="text-green-900 font-medium text-xs md:text-sm">
+                                                                {selectedItem.finder_student_id}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                    {selectedItem.finder_contact && (
+                                                        <div>
+                                                            <p className="text-xs text-green-700 mb-1">Contact</p>
+                                                            <p className="text-green-900 font-medium text-xs md:text-sm break-words">
+                                                                {selectedItem.finder_contact}
+                                                            </p>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                            </div>
                                         )}
 
-                                        {(selectedItem.status?.toLowerCase() === 'approved' || selectedItem.type?.toLowerCase() === 'found') && (
-                                            <button
-                                                onClick={() => {
-                                                    handleStatusChange(selectedItem.id, 'Claimed');
-                                                    closeModal();
-                                                }}
-                                                className={`hover:opacity-90 text-white px-3 md:px-4 py-2 rounded-lg transition-colors text-sm md:text-base w-full md:w-auto ${selectedItem.type === 'Lost' ? 'bg-red-600 hover:bg-red-700' : 'bg-green-600 hover:bg-green-700'}`}
-                                            >
-                                                Mark as Claimed
-                                            </button>
+                                        {/* Change History / Audit Log */}
+                                        {itemHistory.length > 0 && (
+                                            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                                <h5 className="font-semibold text-blue-900 mb-3 text-sm md:text-base flex items-center">
+                                                    <History className="h-4 w-4 mr-2 text-blue-600" />
+                                                    Change History
+                                                </h5>
+                                                {loadingHistory ? (
+                                                    <p className="text-xs text-blue-700">Loading history...</p>
+                                                ) : (
+                                                    <div className="space-y-3">
+                                                        {itemHistory.map((record) => (
+                                                            <div key={record.id} className="bg-white rounded-lg p-3 border border-blue-100">
+                                                                <div className="flex items-start justify-between mb-2">
+                                                                    <span className="text-xs font-semibold text-blue-800">
+                                                                        {record.change_reason}
+                                                                    </span>
+                                                                    <span className="text-xs text-gray-500">
+                                                                        {new Date(record.created_at).toLocaleString('en-US', {
+                                                                            year: 'numeric',
+                                                                            month: 'short',
+                                                                            day: 'numeric',
+                                                                            hour: '2-digit',
+                                                                            minute: '2-digit'
+                                                                        })}
+                                                                    </span>
+                                                                </div>
+                                                                <div className="grid grid-cols-2 gap-2 text-xs">
+                                                                    <div>
+                                                                        <span className="text-gray-600">Previous: </span>
+                                                                        <span className="font-medium text-red-600">{record.previous_type}</span>
+                                                                    </div>
+                                                                    <div>
+                                                                        <span className="text-gray-600">New: </span>
+                                                                        <span className="font-medium text-green-600">{record.new_type}</span>
+                                                                    </div>
+                                                                </div>
+                                                                {record.finder_name && (
+                                                                    <div className="mt-2 pt-2 border-t border-blue-100">
+                                                                        <p className="text-xs text-gray-700">
+                                                                            <span className="font-semibold">Found by:</span> {record.finder_name}
+                                                                            {record.finder_student_id && ` (${record.finder_student_id})`}
+                                                                        </p>
+                                                                        {record.finder_contact && (
+                                                                            <p className="text-xs text-gray-700">
+                                                                                <span className="font-semibold">Contact:</span> {record.finder_contact}
+                                                                            </p>
+                                                                        )}
+                                                                    </div>
+                                                                )}
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                )}
+                                            </div>
                                         )}
+                                </div>
 
-                                        <button
-                                            onClick={closeModal}
-                                            className="bg-gray-500 hover:bg-gray-600 text-white px-3 md:px-4 py-2 rounded-lg transition-colors text-sm md:text-base w-full md:w-auto"
-                                        >
-                                            Close
-                                        </button>
-
-                                        <button
-                                            onClick={() => {
-                                                handleArchive(selectedItem.id);
-                                                closeModal();
-                                            }}
-                                            className="bg-gray-600 hover:bg-gray-700 text-white px-3 md:px-4 py-2 rounded-lg transition-colors flex items-center justify-center space-x-2 text-sm md:text-base w-full md:w-auto"
-                                        >
-                                            <Archive size={16} />
-                                            <span>Archive</span>
-                                        </button>
-                                    </div>
+                                {/* Action Buttons */}
+                                <div className="flex justify-end pt-3 md:pt-4 mt-3 md:mt-4 border-t border-gray-200">
+                                    <button
+                                        onClick={closeModal}
+                                        className="bg-blue-600 hover:bg-blue-700 text-white px-4 md:px-6 py-2 rounded-lg transition-colors text-sm md:text-base font-medium"
+                                    >
+                                        Close
+                                    </button>
                                 </div>
                             </div>
                         </div>
                     </div>
-                </>
+                </div>
             )}
 
             {/* Claim Modal */}
             {showClaimModal && selectedItem && (
-                <>
-                    {/* Full screen blocking overlay */}
+                <div
+                    className="fixed inset-0 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-0 sm:p-2 md:p-4 pt-8 sm:pt-16 md:pt-4"
+                    onClick={closeClaimModal}
+                >
                     <div
-                        className="fixed inset-0 z-40 bg-transparent"
-                        style={{
-                            pointerEvents: 'auto',
-                            touchAction: 'none',
-                            userSelect: 'none',
-                            WebkitUserSelect: 'none',
-                            MozUserSelect: 'none',
-                            msUserSelect: 'none'
-                        }}
+                        className="bg-blue-50 rounded-t-xl sm:rounded-t-2xl md:rounded-xl shadow-2xl max-w-2xl w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)] md:h-auto md:max-h-[85vh] border-2 border-blue-200 flex flex-col overflow-hidden"
                         onClick={(e) => e.stopPropagation()}
-                    ></div>
-
-                    <div
-                        className="fixed inset-0 flex items-start md:items-center justify-center z-50 p-0 md:p-4 pt-16 md:pt-4"
-                        style={{
-                            pointerEvents: 'auto',
-                            touchAction: 'auto'
-                        }}
                     >
-                        <div
-                            className="bg-blue-50 rounded-t-2xl md:rounded-xl shadow-2xl max-w-2xl w-full h-[calc(100vh-4rem)] md:h-auto md:max-h-[85vh] transform transition-all duration-300 scale-100 border-2 border-blue-200 flex flex-col overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {/* Modal Header */}
-                            <div className="bg-gradient-to-r from-purple-600 to-purple-700 p-3 md:p-6 rounded-t-2xl md:rounded-t-xl flex-shrink-0">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <h2 className="text-base md:text-2xl font-bold text-white break-words">Mark Item as Claimed</h2>
-                                        <p className="text-purple-100 mt-0.5 md:mt-1 text-xs md:text-base">Enter claimant information</p>
-                                    </div>
-                                    <button
-                                        onClick={() => {
-                                            setShowClaimModal(false);
-                                            setClaimantInfo({ name: '', student_id: '', contact: '', email: '' });
-                                            setValidationErrors({});
-                                        }}
-                                        className="text-white hover:text-gray-200 transition-colors p-1 md:p-2 hover:bg-white hover:bg-opacity-20 rounded-lg flex-shrink-0"
-                                    >
-                                        <X className="w-5 h-5 md:w-6 md:h-6" />
-                                    </button>
+                        {/* Modal Header */}
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 md:p-6 rounded-t-2xl md:rounded-t-xl flex-shrink-0">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-base md:text-2xl font-bold text-white break-words">Mark Item as Claimed</h2>
+                                    <p className="text-blue-100 mt-0.5 md:mt-1 text-xs md:text-base">Enter claimant information</p>
                                 </div>
+                                <button
+                                    onClick={() => {
+                                        setShowClaimModal(false);
+                                        setClaimantInfo({ name: '', student_id: '', contact: '', email: '' });
+                                        setValidationErrors({});
+                                    }}
+                                    className="text-white hover:text-gray-200 transition-colors p-1 md:p-2 hover:bg-white hover:bg-opacity-20 rounded-lg flex-shrink-0"
+                                >
+                                    <X className="w-5 h-5 md:w-6 md:h-6" />
+                                </button>
                             </div>
+                        </div>
 
-                            {/* Modal Body - Scrollable */}
-                            <form onSubmit={handleClaimSubmit} className="flex flex-col flex-1 overflow-y-auto">
-                                <div className="p-3 md:p-6">
-                                    <div className="mb-4 md:mb-6 bg-blue-100 rounded-lg p-3 md:p-4 border border-blue-200">
-                                        <div className="flex flex-col md:flex-row gap-4 items-start">
-                                            <div className="flex-1">
+                        {/* Modal Body - Scrollable */}
+                        <form onSubmit={handleClaimSubmit} className="flex flex-col flex-1 overflow-y-auto">
+                            <div className="p-3 md:p-6">
+                                <div className="mb-4 md:mb-6 bg-blue-100 rounded-lg p-3 md:p-4 border border-blue-200">
+                                    <div className="flex flex-col md:flex-row gap-4 items-start">
+                                        <div className="flex-1">
                                                 <h3 className="font-semibold text-blue-900 mb-1 md:mb-2 text-sm md:text-base break-words">Item: {selectedItem.item_name || selectedItem.itemName}</h3>
                                                 <p className="text-xs md:text-sm text-blue-800 break-words">{selectedItem.description}</p>
-                                            </div>
-                                            {selectedItem.imagePath && selectedItem.imagePath !== 'NULL' && selectedItem.imagePath !== 'null' && selectedItem.imagePath !== '' && (
+                                        </div>
+                                        {selectedItem.imagePath && selectedItem.imagePath !== 'NULL' && selectedItem.imagePath !== 'null' && selectedItem.imagePath !== '' && (
                                                 <div className="w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
                                                     <img
                                                         src={getAssetUrl(selectedItem.imagePath)}
@@ -801,11 +994,11 @@ function ManageItems() {
                                                     />
                                                 </div>
                                             )}
-                                        </div>
                                     </div>
+                                </div>
 
-                                    <div className="space-y-3 md:space-y-4">
-                                        <div>
+                                <div className="space-y-3 md:space-y-4">
+                                    <div>
                                             <label className="block text-xs md:text-sm font-semibold text-blue-900 mb-1.5 md:mb-2">
                                                 Claimant Name <span className="text-red-500">*</span>
                                             </label>
@@ -822,8 +1015,7 @@ function ManageItems() {
                                                         setValidationErrors({ ...validationErrors, name: 'Only letters and spaces allowed' });
                                                     }
                                                 }}
-                                                className={`w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white ${validationErrors.name ? 'border-red-500' : 'border-blue-300'
-                                                    }`}
+                                                className={`w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white ${validationErrors.name ? 'border-red-500' : 'border-blue-300'}`}
                                                 placeholder="Enter claimant's full name"
                                                 required
                                             />
@@ -859,7 +1051,7 @@ function ManageItems() {
                                                         }
                                                     }
                                                 }}
-                                                className={`w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white ${validationErrors.student_id ? 'border-red-500' : 'border-blue-300'
+                                                className={`w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white ${validationErrors.student_id ? 'border-red-500' : 'border-blue-300'
                                                     }`}
                                                 placeholder="1234-5678"
                                                 maxLength="9"
@@ -895,163 +1087,348 @@ function ManageItems() {
                                                         setValidationErrors({ ...validationErrors, contact: 'Only numbers, spaces, hyphens, and + allowed' });
                                                     }
                                                 }}
-                                                className={`w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent bg-white ${validationErrors.contact ? 'border-red-500' : 'border-blue-300'
+                                                className={`w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white ${validationErrors.contact ? 'border-red-500' : 'border-blue-300'
                                                     }`}
                                                 placeholder="09123456789"
                                             />
                                             {validationErrors.contact && (
                                                 <p className="text-red-500 text-sm mt-1">{validationErrors.contact}</p>
                                             )}
+                                    </div>
+
+                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 md:gap-4">
+                                        <div>
+                                            <label className="block text-xs md:text-sm font-semibold text-blue-900 mb-1.5 md:mb-2">
+                                                Claim Date <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="date"
+                                                value={claimantInfo.claim_date}
+                                                onChange={(e) => setClaimantInfo({ ...claimantInfo, claim_date: e.target.value })}
+                                                className="w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                                required
+                                            />
+                                        </div>
+                                        <div>
+                                            <label className="block text-xs md:text-sm font-semibold text-blue-900 mb-1.5 md:mb-2">
+                                                Claim Time <span className="text-red-500">*</span>
+                                            </label>
+                                            <input
+                                                type="time"
+                                                value={claimantInfo.claim_time}
+                                                onChange={(e) => setClaimantInfo({ ...claimantInfo, claim_time: e.target.value })}
+                                                className="w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border border-blue-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent bg-white"
+                                                required
+                                            />
                                         </div>
                                     </div>
                                 </div>
+                            </div>
 
-                                {/* Modal Footer - Fixed */}
-                                <div className="flex gap-2 md:gap-3 p-3 md:p-6 pt-3 md:pt-4 border-t border-blue-200 bg-blue-50 flex-shrink-0">
-                                    <button
-                                        type="button"
-                                        onClick={() => {
-                                            setShowClaimModal(false);
-                                            setClaimantInfo({ name: '', student_id: '', contact: '' });
-                                        }}
-                                        className="flex-1 px-3 md:px-4 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg transition-colors font-medium text-sm md:text-base"
-                                    >
-                                        Cancel
-                                    </button>
-                                    <button
-                                        type="submit"
-                                        className="flex-1 px-3 md:px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-1 md:gap-2 text-sm md:text-base"
-                                    >
-                                        <CheckCircle className="h-4 w-4 md:h-5 md:w-5" />
-                                        <span className="hidden sm:inline">Mark as Claimed</span>
-                                        <span className="sm:hidden">Claim</span>
-                                    </button>
-                                </div>
-                            </form>
-                        </div>
+                            {/* Modal Footer - Fixed */}
+                            <div className="flex gap-2 md:gap-3 p-3 md:p-6 pt-3 md:pt-4 border-t border-blue-200 bg-blue-50 flex-shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowClaimModal(false);
+                                        setClaimantInfo({ 
+                                            name: '', 
+                                            student_id: '', 
+                                            contact: '',
+                                            claim_date: new Date().toISOString().split('T')[0],
+                                            claim_time: new Date().toTimeString().split(' ')[0].substring(0, 5)
+                                        });
+                                    }}
+                                    className="flex-1 px-3 md:px-4 py-2 bg-gray-500 hover:bg-gray-600 text-white rounded-lg transition-colors font-medium text-sm md:text-base"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-3 md:px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-1 md:gap-2 text-sm md:text-base"
+                                >
+                                    <CheckCircle className="h-4 w-4 md:h-5 md:w-5" />
+                                    <span className="hidden sm:inline">Mark as Claimed</span>
+                                    <span className="sm:hidden">Claim</span>
+                                </button>
+                            </div>
+                        </form>
                     </div>
-                </>
+                </div>
+            )}
+
+            {/* Found Modal - Collect Finder Information */}
+            {showFoundModal && selectedItem && (
+                <div
+                    className="fixed inset-0 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-0 sm:p-2 md:p-4 pt-8 sm:pt-16 md:pt-4"
+                    onClick={() => setShowFoundModal(false)}
+                >
+                    <div
+                        className="bg-white rounded-t-xl sm:rounded-t-2xl md:rounded-xl shadow-2xl max-w-2xl w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)] md:h-auto md:max-h-[90vh] flex flex-col overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="bg-gradient-to-r from-green-600 to-green-700 p-3 md:p-6 rounded-t-2xl md:rounded-t-xl flex-shrink-0">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-base md:text-2xl font-bold text-white break-words">
+                                        Mark as Found
+                                    </h2>
+                                    <p className="text-green-100 mt-0.5 md:mt-1 text-xs md:text-base">
+                                        Enter finder information
+                                    </p>
+                                </div>
+                                <button
+                                    onClick={() => {
+                                        setShowFoundModal(false);
+                                        setFinderInfo({ name: '', student_id: '', contact: '' });
+                                    }}
+                                    className="text-white hover:text-gray-200 transition-colors p-1 md:p-2 hover:bg-white hover:bg-opacity-20 rounded-lg flex-shrink-0"
+                                >
+                                    <X className="w-5 h-5 md:w-6 md:h-6" />
+                                </button>
+                            </div>
+                        </div>
+
+                        {/* Modal Body - Scrollable */}
+                        <form onSubmit={handleMarkAsFound} className="flex flex-col flex-1 overflow-y-auto">
+                            <div className="p-3 md:p-6">
+                                <div className="mb-4 md:mb-6 bg-green-50 rounded-lg p-3 md:p-4 border border-green-200">
+                                    <div className="flex flex-col md:flex-row gap-4 items-start">
+                                        <div className="flex-1">
+                                            <h3 className="font-semibold text-green-900 mb-1 md:mb-2 text-sm md:text-base break-words">Item: {selectedItem.item_name || selectedItem.itemName}</h3>
+                                            <p className="text-xs md:text-sm text-green-800 break-words">{selectedItem.description}</p>
+                                        </div>
+                                        {selectedItem.imagePath && selectedItem.imagePath !== 'NULL' && selectedItem.imagePath !== 'null' && selectedItem.imagePath !== '' && (
+                                            <div className="w-16 h-16 md:w-20 md:h-20 bg-gray-100 rounded-lg overflow-hidden flex-shrink-0">
+                                                <img
+                                                    src={getAssetUrl(selectedItem.imagePath)}
+                                                    alt={selectedItem.item_name || selectedItem.itemName}
+                                                    className="w-full h-full object-cover"
+                                                    onError={(e) => {
+                                                        e.target.style.display = 'none';
+                                                    }}
+                                                />
+                                            </div>
+                                        )}
+                                    </div>
+                                </div>
+
+                                <div className="space-y-3 md:space-y-4">
+                                    <div>
+                                        <label className="block text-xs md:text-sm font-semibold text-green-900 mb-1.5 md:mb-2">
+                                            Finder Name <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={finderInfo.name}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                if (/^[a-zA-Z\s]*$/.test(value) || value === '') {
+                                                    setFinderInfo({ ...finderInfo, name: value });
+                                                }
+                                            }}
+                                            className="w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                                            placeholder="Enter finder's full name"
+                                            required
+                                        />
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs md:text-sm font-semibold text-green-900 mb-1.5 md:mb-2">
+                                            Student ID <span className="text-red-500">*</span>
+                                        </label>
+                                        <input
+                                            type="text"
+                                            value={finderInfo.student_id}
+                                            onChange={(e) => {
+                                                let value = e.target.value.replace(/[^0-9]/g, '');
+                                                if (value.length > 4) {
+                                                    value = value.slice(0, 4) + '-' + value.slice(4, 8);
+                                                }
+                                                if (value.replace('-', '').length <= 8) {
+                                                    setFinderInfo({ ...finderInfo, student_id: value });
+                                                }
+                                            }}
+                                            className="w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                                            placeholder="1234-5678"
+                                            maxLength="9"
+                                            required
+                                        />
+                                        <p className="text-green-600 text-xs mt-1">Format: 1234-5678 (8 digits)</p>
+                                    </div>
+
+                                    <div>
+                                        <label className="block text-xs md:text-sm font-semibold text-green-900 mb-1.5 md:mb-2">
+                                            Contact Number
+                                        </label>
+                                        <input
+                                            type="tel"
+                                            value={finderInfo.contact}
+                                            onChange={(e) => {
+                                                const value = e.target.value;
+                                                if (/^[0-9\s\-+]*$/.test(value) || value === '') {
+                                                    setFinderInfo({ ...finderInfo, contact: value });
+                                                }
+                                            }}
+                                            className="w-full px-3 md:px-4 py-1.5 md:py-2 text-sm md:text-base border border-green-300 rounded-lg focus:ring-2 focus:ring-green-500 focus:border-transparent bg-white"
+                                            placeholder="09123456789"
+                                        />
+                                    </div>
+                                </div>
+                            </div>
+
+                            {/* Modal Footer - Fixed */}
+                            <div className="flex gap-2 md:gap-3 p-3 md:p-6 pt-3 md:pt-4 border-t border-green-200 bg-green-50 flex-shrink-0">
+                                <button
+                                    type="button"
+                                    onClick={() => {
+                                        setShowFoundModal(false);
+                                        setFinderInfo({ name: '', student_id: '', contact: '' });
+                                    }}
+                                    className="flex-1 px-3 md:px-4 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg transition-colors font-medium text-sm md:text-base"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    type="submit"
+                                    className="flex-1 px-3 md:px-4 py-2 bg-green-600 hover:bg-green-700 text-white rounded-lg transition-colors font-medium flex items-center justify-center gap-1 md:gap-2 text-sm md:text-base"
+                                >
+                                    <CheckCircle className="h-4 w-4 md:h-5 md:w-5" />
+                                    <span className="hidden sm:inline">Mark as Found</span>
+                                    <span className="sm:hidden">Found</span>
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
             )}
 
             {/* Claimed Items History Modal */}
             {showClaimedItemsModal && (
-                <>
-                    <div className="fixed inset-0 bg-transparent z-50"></div>
-
-                    <div className="fixed inset-0 flex items-start md:items-center justify-center z-[60] p-0 md:p-4 pt-16 md:pt-4">
-                        <div
-                            className="bg-white rounded-t-2xl md:rounded-xl shadow-2xl max-w-4xl w-full h-[calc(100vh-4rem)] md:h-auto md:max-h-[85vh] transform transition-all duration-300 scale-100 flex flex-col overflow-hidden"
-                            onClick={(e) => e.stopPropagation()}
-                        >
-                            {/* Modal Header */}
-                            <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 md:p-6 rounded-t-2xl md:rounded-t-xl flex-shrink-0">
-                                <div className="flex items-center justify-between gap-2">
-                                    <div className="flex-1 min-w-0">
-                                        <h2 className="text-base md:text-2xl font-bold text-white break-words flex items-center gap-2">
-                                            <History className="h-5 w-5" />
-                                            Claimed Items History
-                                        </h2>
-                                        <p className="text-blue-100 mt-0.5 md:mt-1 text-xs md:text-base">
-                                            {claimedItems.length} claimed items
-                                        </p>
-                                    </div>
-                                    <button
-                                        onClick={() => setShowClaimedItemsModal(false)}
-                                        className="text-white hover:text-gray-200 transition-colors p-1 md:p-2 hover:bg-white hover:bg-opacity-20 rounded-lg flex-shrink-0"
-                                    >
-                                        <X className="w-5 h-5 md:w-6 md:h-6" />
-                                    </button>
+                <div
+                    className="fixed inset-0 backdrop-blur-sm z-50 flex items-start md:items-center justify-center p-0 sm:p-2 md:p-4 pt-8 sm:pt-16 md:pt-4"
+                    onClick={() => setShowClaimedItemsModal(false)}
+                >
+                    <div
+                        className="bg-white rounded-t-xl sm:rounded-t-2xl md:rounded-xl shadow-2xl max-w-4xl w-full h-[calc(100vh-2rem)] sm:h-[calc(100vh-4rem)] md:h-auto md:max-h-[90vh] flex flex-col overflow-hidden"
+                        onClick={(e) => e.stopPropagation()}
+                    >
+                        {/* Modal Header */}
+                        <div className="bg-gradient-to-r from-blue-600 to-blue-700 p-3 md:p-6 rounded-t-2xl md:rounded-t-xl flex-shrink-0">
+                            <div className="flex items-center justify-between gap-2">
+                                <div className="flex-1 min-w-0">
+                                    <h2 className="text-base md:text-2xl font-bold text-white break-words flex items-center gap-2">
+                                        <History className="h-5 w-5" />
+                                        Claimed Items History
+                                    </h2>
+                                    <p className="text-blue-100 mt-0.5 md:mt-1 text-xs md:text-base">
+                                        {claimedItems.length} claimed items
+                                    </p>
                                 </div>
-                            </div>
-
-                            {/* Modal Body - Scrollable */}
-                            <div className="flex-1 overflow-y-auto p-3 md:p-6">
-                                {claimedItems.length === 0 ? (
-                                    <div className="text-center py-12">
-                                        <History className="h-16 w-16 text-gray-400 mx-auto mb-4" />
-                                        <h3 className="text-lg font-medium text-gray-800 mb-2">No claimed items yet</h3>
-                                        <p className="text-gray-600">Items that are marked as claimed will appear here.</p>
-                                    </div>
-                                ) : (
-                                    <div className="space-y-6">
-                                        {claimedItems
-                                            .sort((a, b) => new Date(b.claimed_at || b.date_reported) - new Date(a.claimed_at || a.date_reported))
-                                            .map((item) => (
-                                                <div key={item.id} className="bg-white rounded-lg p-5 border-4 border-gray-400 shadow-sm hover:shadow-md transition-shadow">
-                                                    <div className="flex flex-col gap-4">
-                                                        {/* Image Section - Mobile First */}
-                                                        {item.imagePath && item.imagePath !== 'NULL' && item.imagePath !== 'null' && item.imagePath !== '' && (
-                                                            <div className="w-full h-48 sm:h-56 md:h-64 bg-gray-100 rounded-lg overflow-hidden">
-                                                                <img
-                                                                    src={getAssetUrl(item.imagePath)}
-                                                                    alt={item.item_name || item.itemName}
-                                                                    className="w-full h-full object-contain bg-gray-100"
-                                                                    loading="lazy"
-                                                                    onError={(e) => {
-                                                                        e.target.style.display = 'none';
-                                                                        e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-400"><div class="text-center"><div class="text-4xl mb-2">📦</div><p>Image not available</p></div></div>';
-                                                                    }}
-                                                                />
-                                                            </div>
-                                                        )}
-
-                                                        {/* Content Section */}
-                                                        <div className="flex-1">
-                                                            <div className="flex items-center gap-2 mb-3">
-                                                                <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
-                                                                    Claimed
-                                                                </span>
-                                                                {item.reference_number && (
-                                                                    <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
-                                                                        Ref: {item.reference_number}
-                                                                    </span>
-                                                                )}
-                                                            </div>
-
-                                                            <h4 className="text-xl font-semibold text-gray-800 mb-3">
-                                                                {item.item_name || item.itemName}
-                                                            </h4>
-
-                                                            <div className="space-y-3 text-sm text-gray-600 mb-4">
-                                                                <p><strong>Description:</strong> {item.description}</p>
-                                                                <p><strong>Location:</strong> {item.location}</p>
-                                                                <p><strong>Reported by:</strong> {item.reporter_name || item.reportedBy}</p>
-                                                                <p><strong>Date Reported:</strong> {item.date_reported ? new Date(item.date_reported).toLocaleDateString() : new Date(item.reportedDate).toLocaleDateString()}</p>
-                                                            </div>
-
-                                                            {item.claimant_name && (
-                                                                <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
-                                                                    <h5 className="font-semibold text-blue-900 mb-3">Claimant Information</h5>
-                                                                    <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
-                                                                        <p><strong>Name:</strong> {item.claimant_name}</p>
-                                                                        <p><strong>Student ID:</strong> {item.claimant_student_id}</p>
-                                                                        {item.claimant_contact && <p><strong>Contact:</strong> {item.claimant_contact}</p>}
-                                                                        {item.claimed_at && (
-                                                                            <p><strong>Claimed Date:</strong> {new Date(item.claimed_at).toLocaleDateString()}</p>
-                                                                        )}
-                                                                    </div>
-                                                                </div>
-                                                            )}
-                                                        </div>
-                                                    </div>
-                                                </div>
-                                            ))}
-                                    </div>
-                                )}
-                            </div>
-
-                            {/* Modal Footer */}
-                            <div className="flex justify-end p-3 md:p-6 pt-3 md:pt-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
                                 <button
                                     onClick={() => setShowClaimedItemsModal(false)}
-                                    className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                                    className="text-white hover:text-gray-200 transition-colors p-1 md:p-2 hover:bg-white hover:bg-opacity-20 rounded-lg flex-shrink-0"
                                 >
-                                    Close
+                                    <X className="w-5 h-5 md:w-6 md:h-6" />
                                 </button>
                             </div>
                         </div>
+
+                        {/* Modal Body - Scrollable */}
+                        <div className="flex-1 overflow-y-auto p-3 md:p-6">
+                            {claimedItems.length === 0 ? (
+                                <div className="text-center py-12">
+                                    <History className="h-16 w-16 text-gray-400 mx-auto mb-4" />
+                                    <h3 className="text-lg font-medium text-gray-800 mb-2">No claimed items yet</h3>
+                                    <p className="text-gray-600">Items that are marked as claimed will appear here.</p>
+                                </div>
+                            ) : (
+                                <div className="space-y-6">
+                                    {claimedItems
+                                        .sort((a, b) => new Date(b.claimed_at || b.date_reported) - new Date(a.claimed_at || a.date_reported))
+                                        .map((item) => (
+                                            <div key={item.id} className="bg-white rounded-lg p-5 border-4 border-gray-400 shadow-sm hover:shadow-md transition-shadow">
+                                                <div className="flex flex-col gap-4">
+                                                    {/* Image Section - Mobile First */}
+                                                    {item.imagePath && item.imagePath !== 'NULL' && item.imagePath !== 'null' && item.imagePath !== '' && (
+                                                        <div className="w-full h-48 sm:h-56 md:h-64 bg-gray-100 rounded-lg overflow-hidden">
+                                                            <img
+                                                                src={getAssetUrl(item.imagePath)}
+                                                                alt={item.item_name || item.itemName}
+                                                                className="w-full h-full object-contain bg-gray-100"
+                                                                loading="lazy"
+                                                                onError={(e) => {
+                                                                    e.target.style.display = 'none';
+                                                                    e.target.parentElement.innerHTML = '<div class="w-full h-full flex items-center justify-center text-gray-400"><div class="text-center"><div class="text-4xl mb-2">📦</div><p>Image not available</p></div></div>';
+                                                                }}
+                                                            />
+                                                        </div>
+                                                    )}
+
+                                                    {/* Content Section */}
+                                                    <div className="flex-1">
+                                                        <div className="flex items-center gap-2 mb-3">
+                                                            <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-blue-100 text-blue-800">
+                                                                Claimed
+                                                            </span>
+                                                            {item.reference_number && (
+                                                                <span className="inline-flex px-3 py-1 text-sm font-semibold rounded-full bg-green-100 text-green-800">
+                                                                    Ref: {item.reference_number}
+                                                                </span>
+                                                            )}
+                                                        </div>
+
+                                                        <h4 className="text-xl font-semibold text-gray-800 mb-3">
+                                                            {item.item_name || item.itemName}
+                                                        </h4>
+
+                                                        <div className="space-y-3 text-sm text-gray-600 mb-4">
+                                                            <p><strong>Description:</strong> {item.description}</p>
+                                                            <p><strong>Location:</strong> {item.location}</p>
+                                                            <p><strong>Reported by:</strong> {item.reporter_name || item.reportedBy}</p>
+                                                            <p><strong>Date Reported:</strong> {item.date_reported ? new Date(item.date_reported).toLocaleDateString() : new Date(item.reportedDate).toLocaleDateString()}</p>
+                                                        </div>
+
+                                                        {item.claimant_name && (
+                                                            <div className="mt-4 p-4 bg-blue-50 rounded-lg border border-blue-200">
+                                                                <h5 className="font-semibold text-blue-900 mb-3">Claimant Information</h5>
+                                                                <div className="grid grid-cols-1 md:grid-cols-2 gap-3 text-sm">
+                                                                    <p><strong>Name:</strong> {item.claimant_name}</p>
+                                                                    <p><strong>Student ID:</strong> {item.claimant_student_id}</p>
+                                                                    {item.claimant_contact && <p><strong>Contact:</strong> {item.claimant_contact}</p>}
+                                                                    {item.claimed_at && (
+                                                                        <p><strong>Date & Time Claimed:</strong> {new Date(item.claimed_at).toLocaleString('en-US', {
+                                                                            year: 'numeric',
+                                                                            month: 'long',
+                                                                            day: 'numeric',
+                                                                            hour: '2-digit',
+                                                                            minute: '2-digit',
+                                                                            hour12: true
+                                                                        })}</p>
+                                                                    )}
+                                                                </div>
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        ))}
+                                </div>
+                            )}
+                        </div>
+
+                        {/* Modal Footer */}
+                        <div className="flex justify-end p-3 md:p-6 pt-3 md:pt-4 border-t border-gray-200 bg-gray-50 flex-shrink-0">
+                            <button
+                                onClick={() => setShowClaimedItemsModal(false)}
+                                className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg transition-colors font-medium"
+                            >
+                                Close
+                            </button>
+                        </div>
                     </div>
-                </>
+                </div>
             )}
 
             {/* Fullscreen Image Viewer */}
@@ -1111,6 +1488,30 @@ function ManageItems() {
                     />
                 </div>
             )}
+            {/* Success Modal */}
+            <SuccessModal 
+                show={showSuccess}
+                onClose={() => setShowSuccess(false)}
+                message={successMessage}
+            />
+
+            {/* Error Modal */}
+            <ErrorModal 
+                show={showError}
+                onClose={() => setShowError(false)}
+                message={errorMessage}
+            />
+
+            {/* Confirm Modal */}
+            <ConfirmModal 
+                show={showConfirm}
+                onClose={() => setShowConfirm(false)}
+                onConfirm={confirmAction}
+                title={confirmTitle}
+                message={confirmMessage}
+                confirmText="Confirm"
+                type={confirmType}
+            />
         </div>
     );
 }
