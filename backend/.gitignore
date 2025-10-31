@@ -1,0 +1,42 @@
+# Environment variables
+.env
+.env.local
+.env.production
+.env.staging
+
+# Test files
+test_*.php
+debug_*.html
+simple_*.php
+*_test.php
+
+# Backup files
+*_backup.php
+*_working.php
+
+# Logs
+*.log
+logs/
+
+# Uploads (optional - uncomment if you don't want to track uploads)
+# uploads/*
+# !uploads/.gitkeep
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Composer
+vendor/
+composer.phar
+
+# Temporary files
+*.tmp
+*.temp
