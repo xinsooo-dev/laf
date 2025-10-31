@@ -315,13 +315,23 @@ function AdminDashboard() {
             >
                 {/* Sidebar */}
                 <div
-                    className={`bg-blue-600 text-white hidden md:flex flex-col transition-all duration-300 fixed h-full z-10 ${sidebarCollapsed ? 'w-16' : 'w-64'
+                    className={`bg-blue-600 text-white hidden md:flex flex-col transition-all duration-300 fixed h-full z-10 ${sidebarCollapsed && !sidebarAutoExpanded ? 'w-16' : 'w-64'
                         }`}
                     onClick={(e) => e.stopPropagation()}
+                    onMouseEnter={() => {
+                        if (sidebarCollapsed) {
+                            setSidebarAutoExpanded(true);
+                        }
+                    }}
+                    onMouseLeave={() => {
+                        if (sidebarCollapsed) {
+                            setSidebarAutoExpanded(false);
+                        }
+                    }}
                 >
                     {/* Sidebar Toggle Button */}
                     <div className="relative p-4 border-b border-blue-500">
-                        {!sidebarCollapsed && (
+                        {(!sidebarCollapsed || sidebarAutoExpanded) && (
                             <div className="absolute inset-0 flex items-center justify-center">
                                 <h2 className="text-white text-lg font-bold tracking-wide">Menu</h2>
                             </div>
@@ -345,15 +355,15 @@ function AdminDashboard() {
                     </div>
 
                     {/* User Profile */}
-                    <div className={`p-6 border-b border-blue-500 transition-all duration-300 ${sidebarCollapsed ? 'px-2' : ''
+                    <div className={`p-6 border-b border-blue-500 transition-all duration-300 ${sidebarCollapsed && !sidebarAutoExpanded ? 'px-2' : ''
                         }`}>
-                        <div className={`flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'}`}>
+                        <div className={`flex items-center ${sidebarCollapsed && !sidebarAutoExpanded ? 'justify-center' : 'gap-3'}`}>
                             <div className="w-10 h-10 bg-white rounded-full flex items-center justify-center transform transition-all duration-300 hover:scale-110">
                                 <span className="text-blue-600 font-bold">
                                     {user?.fullName ? user.fullName.charAt(0).toUpperCase() : 'A'}
                                 </span>
                             </div>
-                            {!sidebarCollapsed && (
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && (
                                 <div>
                                     <h3 className="font-semibold">{user?.fullName || user?.email || 'Administrator'}</h3>
                                     <p className="text-blue-200 text-sm">Admin</p>
@@ -363,7 +373,7 @@ function AdminDashboard() {
                     </div>
 
                     {/* Navigation */}
-                    <nav className={`flex-1 p-4 space-y-2 transition-all duration-300 overflow-y-auto ${sidebarCollapsed ? 'px-2' : ''
+                    <nav className={`flex-1 p-4 space-y-2 transition-all duration-300 overflow-y-auto ${sidebarCollapsed && !sidebarAutoExpanded ? 'px-2' : ''
                         }`}>
                         {/* Dashboard */}
                         <button
@@ -373,14 +383,14 @@ function AdminDashboard() {
                                 setSidebarCollapsed(true);
                                 setSidebarAutoExpanded(false);
                             }}
-                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg text-left transition-all duration-300 transform hover:scale-105 hover:shadow-lg ${activeTab === 'dashboard'
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-all duration-300 transform hover:scale-105 hover:shadow-lg ${activeTab === 'dashboard'
                                 ? 'bg-blue-800 text-white scale-105 shadow-lg'
                                 : 'hover:bg-blue-700 text-blue-100'
                                 }`}
-                            title={sidebarCollapsed ? 'Dashboard' : ''}
+                            title={sidebarCollapsed && !sidebarAutoExpanded ? 'Dashboard' : ''}
                         >
                             <BarChart3 className="h-5 w-5 flex-shrink-0" />
-                            {!sidebarCollapsed && 'Dashboard'}
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && 'Dashboard'}
                         </button>
 
                         {/* Item Management - Parent */}
@@ -397,7 +407,7 @@ function AdminDashboard() {
                                         setItemManagementOpen(!itemManagementOpen);
                                     }
                                 }}
-                                className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'justify-between'} p-3 rounded-lg text-left transition-colors ${['manage-items', 'claim-management', 'archived-items', 'archive-management', 'post-item'].includes(activeTab)
+                                className={`w-full flex items-center justify-between p-3 rounded-lg text-left transition-colors ${['manage-items', 'claim-management', 'archived-items', 'archive-management', 'post-item'].includes(activeTab)
                                     ? 'bg-blue-800 text-white'
                                     : 'hover:bg-blue-700 text-blue-100'
                                     }`}
@@ -405,15 +415,15 @@ function AdminDashboard() {
                             >
                                 <div className="flex items-center gap-3">
                                     <Package className="h-5 w-5 flex-shrink-0" />
-                                    {!sidebarCollapsed && 'Item Management'}
+                                    {(!sidebarCollapsed || sidebarAutoExpanded) && 'Item Management'}
                                 </div>
-                                {!sidebarCollapsed && (
+                                {(!sidebarCollapsed || sidebarAutoExpanded) && (
                                     <ChevronDown className={`h-4 w-4 transition-transform ${itemManagementOpen ? 'rotate-180' : ''}`} />
                                 )}
                             </button>
 
                             {/* Submenu */}
-                            {!sidebarCollapsed && itemManagementOpen && (
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && itemManagementOpen && (
                                 <div
                                     className="item-management-dropdown ml-4 mt-1 space-y-1 border-l-2 border-gray-300 pl-2 bg-white rounded-lg p-2 max-h-80 overflow-y-auto"
                                     style={{
@@ -490,14 +500,14 @@ function AdminDashboard() {
                                 setSidebarCollapsed(true);
                                 setSidebarAutoExpanded(false);
                             }}
-                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg text-left transition-colors ${activeTab === 'categories-management'
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${activeTab === 'categories-management'
                                 ? 'bg-blue-800 text-white'
                                 : 'hover:bg-blue-700 text-blue-100'
                                 }`}
                             title={sidebarCollapsed ? 'Categories Management' : ''}
                         >
                             <LayoutGrid className="h-5 w-5 flex-shrink-0" />
-                            {!sidebarCollapsed && 'Categories Management'}
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && 'Categories Management'}
                         </button>
 
                         {/* Reports */}
@@ -508,14 +518,14 @@ function AdminDashboard() {
                                 setSidebarCollapsed(true);
                                 setSidebarAutoExpanded(false);
                             }}
-                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg text-left transition-colors ${activeTab === 'reports'
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${activeTab === 'reports'
                                 ? 'bg-blue-800 text-white'
                                 : 'hover:bg-blue-700 text-blue-100'
                                 }`}
                             title={sidebarCollapsed ? 'Reports' : ''}
                         >
                             <FileText className="h-5 w-5 flex-shrink-0" />
-                            {!sidebarCollapsed && 'Reports'}
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && 'Reports'}
                         </button>
                         {/* Claim Instructions */}
                         <button
@@ -525,14 +535,14 @@ function AdminDashboard() {
                                 setSidebarCollapsed(true);
                                 setSidebarAutoExpanded(false);
                             }}
-                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg text-left transition-colors ${activeTab === 'claim-instructions'
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${activeTab === 'claim-instructions'
                                 ? 'bg-blue-800 text-white'
                                 : 'hover:bg-blue-700 text-blue-100'
                                 }`}
                             title={sidebarCollapsed ? 'Claim Instructions' : ''}
                         >
                             <ClipboardList className="h-5 w-5 flex-shrink-0" />
-                            {!sidebarCollapsed && 'Claim Instructions'}
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && 'Claim Instructions'}
                         </button>
 
                         {/* Announcements */}
@@ -543,14 +553,14 @@ function AdminDashboard() {
                                 setSidebarCollapsed(true);
                                 setSidebarAutoExpanded(false);
                             }}
-                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg text-left transition-colors ${activeTab === 'announcements'
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${activeTab === 'announcements'
                                 ? 'bg-blue-800 text-white'
                                 : 'hover:bg-blue-700 text-blue-100'
                                 }`}
                             title={sidebarCollapsed ? 'Announcements' : ''}
                         >
                             <Megaphone className="h-5 w-5 flex-shrink-0" />
-                            {!sidebarCollapsed && 'Announcements'}
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && 'Announcements'}
                         </button>
 
                         {/* Settings */}
@@ -561,14 +571,14 @@ function AdminDashboard() {
                                 setSidebarCollapsed(true);
                                 setSidebarAutoExpanded(false);
                             }}
-                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg text-left transition-colors ${activeTab === 'settings'
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left transition-colors ${activeTab === 'settings'
                                 ? 'bg-blue-800 text-white'
                                 : 'hover:bg-blue-700 text-blue-100'
                                 }`}
                             title={sidebarCollapsed ? 'Settings' : ''}
                         >
                             <Settings className="h-5 w-5 flex-shrink-0" />
-                            {!sidebarCollapsed && 'Settings'}
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && 'Settings'}
                         </button>
                     </nav>
 
@@ -589,18 +599,18 @@ function AdminDashboard() {
                                     }
                                 );
                             }}
-                            className={`w-full flex items-center ${sidebarCollapsed ? 'justify-center' : 'gap-3'} p-3 rounded-lg text-left hover:bg-blue-700 text-blue-100 transition-colors`}
+                            className={`w-full flex items-center gap-3 p-3 rounded-lg text-left hover:bg-blue-700 text-blue-100 transition-colors`}
                             title={sidebarCollapsed ? 'Logout' : ''}
                         >
                             <LogOut size={20} className="flex-shrink-0" />
-                            {!sidebarCollapsed && 'Logout'}
+                            {(!sidebarCollapsed || sidebarAutoExpanded) && 'Logout'}
                         </button>
                     </div>
                 </div>
 
                 {/* Main Content */}
                 <div
-                    className={`flex-1 ${sidebarCollapsed ? 'md:ml-16' : 'md:ml-64'} ml-0 bg-gray-50 animate-slide-in-right h-screen flex flex-col transition-all duration-300 relative`}
+                    className={`flex-1 ${sidebarCollapsed && !sidebarAutoExpanded ? 'md:ml-16' : 'md:ml-64'} ml-0 bg-gray-50 animate-slide-in-right h-screen flex flex-col transition-all duration-300 relative`}
                 >
                     {/* Mobile Header - Fixed */}
                     <div className="md:hidden flex items-center justify-between bg-blue-600 text-white p-3 shadow-lg sticky top-0 z-40">

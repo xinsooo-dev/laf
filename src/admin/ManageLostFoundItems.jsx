@@ -18,6 +18,7 @@ function ManageLostFoundItems({ initialFilterType = 'all' }) {
     const [showModal, setShowModal] = useState(false);
     const [showEditModal, setShowEditModal] = useState(false);
     const [editingItem, setEditingItem] = useState(null);
+    const [originalItem, setOriginalItem] = useState(null);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [zoomLevel, setZoomLevel] = useState(1);
     const [editImagePreview, setEditImagePreview] = useState(null);
@@ -28,6 +29,7 @@ function ManageLostFoundItems({ initialFilterType = 'all' }) {
     const [showError, setShowError] = useState(false);
     const [successMessage, setSuccessMessage] = useState('');
     const [errorMessage, setErrorMessage] = useState('');
+    const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
     
     // Mark as Found modal states
     const [showMarkFoundModal, setShowMarkFoundModal] = useState(false);
@@ -142,14 +144,17 @@ function ManageLostFoundItems({ initialFilterType = 'all' }) {
     };
 
     const handleEdit = (item) => {
-        // Check if location is a custom one (not in predefined list)
-        const customLocation = isCustomLocation(item.location, PREDEFINED_LOCATIONS);
+        // Check if location exists in LOCATION_OPTIONS
+        const locationExists = LOCATION_OPTIONS.some(loc => loc.value === item.location);
         
-        setEditingItem({ 
+        const itemData = { 
             ...item, 
-            location: customLocation ? 'Others' : item.location,
-            customLocation: customLocation ? item.location : ''
-        });
+            location: locationExists ? item.location : 'Others',
+            customLocation: locationExists ? '' : item.location
+        };
+        
+        setEditingItem(itemData);
+        setOriginalItem(itemData); // Store original for comparison
         setShowEditModal(true);
     };
 
@@ -208,11 +213,48 @@ function ManageLostFoundItems({ initialFilterType = 'all' }) {
         }
     };
 
+    const hasUnsavedChanges = () => {
+        if (!editingItem || !originalItem) return false;
+        
+        // Check if any field has changed
+        const fieldsChanged = 
+            editingItem.item_name !== originalItem.item_name ||
+            editingItem.description !== originalItem.description ||
+            editingItem.location !== originalItem.location ||
+            editingItem.customLocation !== originalItem.customLocation ||
+            editingItem.category !== originalItem.category ||
+            editingItem.type !== originalItem.type ||
+            editImageFile !== null; // Image changed
+        
+        return fieldsChanged;
+    };
+
     const closeEditModal = () => {
+        // Check if there are unsaved changes
+        if (hasUnsavedChanges()) {
+            setShowDiscardConfirm(true);
+            return;
+        }
+        
+        // No changes, close immediately
         setShowEditModal(false);
         setEditingItem(null);
+        setOriginalItem(null);
         setEditImagePreview(null);
         setEditImageFile(null);
+    };
+
+    const confirmDiscardChanges = () => {
+        setShowDiscardConfirm(false);
+        setShowEditModal(false);
+        setEditingItem(null);
+        setOriginalItem(null);
+        setEditImagePreview(null);
+        setEditImageFile(null);
+    };
+
+    const cancelDiscardChanges = () => {
+        setShowDiscardConfirm(false);
     };
 
     const handleEditImageChange = (e) => {
@@ -1010,7 +1052,12 @@ function ManageLostFoundItems({ initialFilterType = 'all' }) {
                             </button>
                             <button
                                 onClick={handleSaveEdit}
-                                className="px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors flex items-center gap-2"
+                                disabled={!hasUnsavedChanges()}
+                                className={`px-4 py-2 rounded-lg transition-colors flex items-center gap-2 ${
+                                    hasUnsavedChanges()
+                                        ? 'bg-blue-600 text-white hover:bg-blue-700 cursor-pointer'
+                                        : 'bg-gray-300 text-gray-500 cursor-not-allowed'
+                                }`}
                             >
                                 <Check className="h-4 w-4" />
                                 Save Changes
@@ -1160,6 +1207,34 @@ function ManageLostFoundItems({ initialFilterType = 'all' }) {
                                 <Check className="h-4 w-4" />
                                 Mark as Found
                             </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Discard Changes Confirmation Modal */}
+            {showDiscardConfirm && (
+                <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50 p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }}>
+                    <div className="bg-white rounded-lg shadow-xl max-w-md w-full">
+                        <div className="p-6">
+                            <h3 className="text-lg font-semibold text-gray-900 mb-2">Discard Changes?</h3>
+                            <p className="text-gray-600 mb-6">
+                                You have unsaved changes. Are you sure you want to discard them?
+                            </p>
+                            <div className="flex gap-3 justify-end">
+                                <button
+                                    onClick={cancelDiscardChanges}
+                                    className="px-4 py-2 text-gray-700 bg-gray-200 rounded-lg hover:bg-gray-300 transition-colors"
+                                >
+                                    Cancel
+                                </button>
+                                <button
+                                    onClick={confirmDiscardChanges}
+                                    className="px-4 py-2 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors"
+                                >
+                                    Discard
+                                </button>
+                            </div>
                         </div>
                     </div>
                 </div>

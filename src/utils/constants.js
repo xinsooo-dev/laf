@@ -18,6 +18,7 @@ export const LOCATION_OPTIONS = [
     { value: 'Board of Trustees Room', label: 'Board of Trustees Room (NB 1F)' },
     { value: 'Dean College of Education', label: 'Dean College of Education (NB 1F)' },
     { value: 'Office of the College President', label: 'Office of the College President (NB 1F)' },
+    { value: 'Office of the Registrar', label: 'Office of the Registrar (NB 1F)' },
     
     // New Building - 2nd Floor
     { value: 'NB201', label: 'NB 201 Room' },

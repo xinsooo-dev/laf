@@ -303,7 +303,7 @@ function ClaimInstructions() {
 
             {/* Confirmation Modal */}
             {showConfirmModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setShowConfirmModal(false)}>
+                <div className="fixed inset-0 backdrop-blur-md z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }} onClick={() => setShowConfirmModal(false)}>
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-start justify-between mb-4">
                             <h3 className="text-xl font-bold text-red-700">Confirm Delete</h3>
@@ -337,7 +337,7 @@ function ClaimInstructions() {
 
             {/* Message Modal */}
             {showModal && (
-                <div className="fixed inset-0 bg-black bg-opacity-20 backdrop-blur-md z-50 flex items-center justify-center p-4" onClick={() => setShowModal(false)}>
+                <div className="fixed inset-0 backdrop-blur-md z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }} onClick={() => setShowModal(false)}>
                     <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
                         <div className="flex items-start justify-between mb-4">
                             <h3 className={`text-xl font-bold ${modalType === 'success' ? 'text-green-700' : 'text-red-700'}`}>

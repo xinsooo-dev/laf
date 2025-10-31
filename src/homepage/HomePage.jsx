@@ -12,6 +12,10 @@ function HomePage() {
     const [announcements, setAnnouncements] = useState([]);
     const [loading, setLoading] = useState(true);
 
+    // Menu navigation state
+    const [activeMenu, setActiveMenu] = useState('items'); // 'items', 'claim-instructions', 'announcements', 'about'
+    const [showMenuDropdown, setShowMenuDropdown] = useState(false);
+
     // Search and filter states
     const [searchTerm, setSearchTerm] = useState('');
     const [activeTab, setActiveTab] = useState('lost'); // 'lost' or 'found'
@@ -140,6 +144,8 @@ function HomePage() {
         setSelectedItem(null);
         setIsFullscreen(false);
         setZoomLevel(1);
+        // Restore background scrolling
+        document.body.style.overflow = 'auto';
     };
 
     const handleClaimItem = () => {
@@ -221,76 +227,135 @@ function HomePage() {
             }}
         >
             <header className="bg-blue-600 text-white p-3 sm:p-4 md:p-6">
-                <div className="flex items-center justify-center w-full">
-                    {/* Center: Logo + Title */}
-                    <div className="flex items-center gap-3 sm:gap-4 md:gap-5">
-                        <img src="/nclogo.png" alt="NC Logo" className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 object-contain flex-shrink-0" />
-                        <h1 className="text-xl sm:text-2xl md:text-4xl font-bold">NC iFound</h1>
+                <div className="container mx-auto">
+                    <div className="flex items-center justify-between">
+                        {/* Logo + Title */}
+                        <div className="flex items-center gap-3 sm:gap-4 md:gap-5">
+                            <img src="/nclogo.png" alt="NC Logo" className="h-12 w-12 sm:h-16 sm:w-16 md:h-20 md:w-20 object-contain flex-shrink-0" />
+                            <h1 className="text-xl sm:text-2xl md:text-4xl font-bold">NC iFound</h1>
+                        </div>
+                        
+                        {/* Navigation Menu */}
+                        <nav className="flex items-center gap-6">
+                            <div 
+                                className="relative"
+                                onMouseEnter={() => setShowMenuDropdown(true)}
+                                onMouseLeave={() => setShowMenuDropdown(false)}
+                            >
+                                <button className="text-white font-medium text-sm sm:text-base hover:text-blue-200 transition-colors px-4 py-2">
+                                    MENU
+                                </button>
+                                
+                                {/* Dropdown Menu */}
+                                {showMenuDropdown && (
+                                    <div className="absolute top-full left-0 mt-0 bg-white shadow-lg rounded-b-lg min-w-[200px] z-50">
+                                        <button
+                                            onClick={() => { setActiveMenu('items'); setShowMenuDropdown(false); }}
+                                            className={`w-full text-left px-4 py-3 text-sm hover:bg-blue-50 transition-colors flex items-center gap-2 ${
+                                                activeMenu === 'items' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700'
+                                            }`}
+                                        >
+                                            <Search className="h-4 w-4" />
+                                            Items
+                                        </button>
+                                        <button
+                                            onClick={() => { setActiveMenu('claim-instructions'); setShowMenuDropdown(false); }}
+                                            className={`w-full text-left px-4 py-3 text-sm hover:bg-blue-50 transition-colors flex items-center gap-2 ${
+                                                activeMenu === 'claim-instructions' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700'
+                                            }`}
+                                        >
+                                            <FileText className="h-4 w-4" />
+                                            Claim Instructions
+                                        </button>
+                                        <button
+                                            onClick={() => { setActiveMenu('announcements'); setShowMenuDropdown(false); }}
+                                            className={`w-full text-left px-4 py-3 text-sm hover:bg-blue-50 transition-colors flex items-center gap-2 ${
+                                                activeMenu === 'announcements' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700'
+                                            }`}
+                                        >
+                                            <Megaphone className="h-4 w-4" />
+                                            Announcements
+                                        </button>
+                                        <button
+                                            onClick={() => { setActiveMenu('about'); setShowMenuDropdown(false); }}
+                                            className={`w-full text-left px-4 py-3 text-sm hover:bg-blue-50 transition-colors flex items-center gap-2 rounded-b-lg ${
+                                                activeMenu === 'about' ? 'bg-blue-50 text-blue-700 font-semibold' : 'text-gray-700'
+                                            }`}
+                                        >
+                                            <User className="h-4 w-4" />
+                                            About Us
+                                        </button>
+                                    </div>
+                                )}
+                            </div>
+                        </nav>
                     </div>
                 </div>
             </header>
 
-            {/* Search Section */}
-            <div className="container mx-auto p-1 sm:p-3 md:p-6">
-                <div className="max-w-6xl mx-auto mb-2 sm:mb-4 md:mb-8">
-                    {/* Search Bar and Category Filter */}
-                    <div className="flex items-center gap-2 mb-3">
-                        <div className="relative flex-1">
-                            <input
-                                type="text"
-                                placeholder="Search items..."
-                                value={searchTerm}
-                                onChange={(e) => setSearchTerm(e.target.value)}
-                                className="w-full p-2 sm:p-2.5 md:p-3 pr-10 rounded-lg bg-white bg-opacity-90 shadow-md text-sm sm:text-base"
-                            />
-                            <button className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600 p-1">
-                                <Search className="h-4 w-4 sm:h-5 sm:w-5" />
+            {/* Main Content Area */}
+            <div className="container mx-auto px-4 py-6">
+                    {/* Search Section - Only show when Items menu is active */}
+                    {activeMenu === 'items' && (
+                        <div className="mb-4 md:mb-6">
+                        {/* Search Bar and Category Filter */}
+                        <div className="flex items-center gap-2 mb-3">
+                            <div className="relative flex-1">
+                                <input
+                                    type="text"
+                                    placeholder="Search items..."
+                                    value={searchTerm}
+                                    onChange={(e) => setSearchTerm(e.target.value)}
+                                    className="w-full p-2 sm:p-2.5 md:p-3 pr-10 rounded-lg bg-white bg-opacity-90 shadow-md text-sm sm:text-base"
+                                />
+                                <button className="absolute right-2 top-1/2 transform -translate-y-1/2 text-gray-600 p-1">
+                                    <Search className="h-4 w-4 sm:h-5 sm:w-5" />
+                                </button>
+                            </div>
+                            <select
+                                value={categoryFilter}
+                                onChange={(e) => setCategoryFilter(e.target.value)}
+                                className="px-3 py-2 sm:py-2.5 md:py-3 border border-gray-300 rounded-lg bg-white shadow-md text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                            >
+                                <option value="all">All Categories</option>
+                                {categories.map(cat => (
+                                    <option key={cat.id} value={cat.name}>{cat.name}</option>
+                                ))}
+                            </select>
+                        </div>
+
+                        {/* Tab Buttons - Lost / Found (Below Search) */}
+                        <div className="flex gap-2">
+                            <button
+                                onClick={() => setActiveTab('lost')}
+                                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                    activeTab === 'lost'
+                                        ? 'bg-blue-600 text-white shadow-md'
+                                        : 'bg-white bg-opacity-80 text-gray-600 hover:bg-blue-100'
+                                }`}
+                            >
+                                Lost Items
+                            </button>
+                            <button
+                                onClick={() => setActiveTab('found')}
+                                className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
+                                    activeTab === 'found'
+                                        ? 'bg-blue-600 text-white shadow-md'
+                                        : 'bg-white bg-opacity-80 text-gray-600 hover:bg-blue-100'
+                                }`}
+                            >
+                                Found Items
                             </button>
                         </div>
-                        <select
-                            value={categoryFilter}
-                            onChange={(e) => setCategoryFilter(e.target.value)}
-                            className="px-3 py-2 sm:py-2.5 md:py-3 border border-gray-300 rounded-lg bg-white shadow-md text-sm sm:text-base focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-                        >
-                            <option value="all">All Categories</option>
-                            {categories.map(cat => (
-                                <option key={cat.id} value={cat.name}>{cat.name}</option>
-                            ))}
-                        </select>
-                    </div>
+                        </div>
+                    )}
 
-                    {/* Tab Buttons - Lost / Found (Below Search) */}
-                    <div className="flex gap-2">
-                        <button
-                            onClick={() => setActiveTab('lost')}
-                            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                                activeTab === 'lost'
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'bg-white bg-opacity-80 text-gray-600 hover:bg-blue-100'
-                            }`}
-                        >
-                            Lost Items
-                        </button>
-                        <button
-                            onClick={() => setActiveTab('found')}
-                            className={`px-4 py-2 rounded-full text-sm font-medium transition-all ${
-                                activeTab === 'found'
-                                    ? 'bg-blue-600 text-white shadow-md'
-                                    : 'bg-white bg-opacity-80 text-gray-600 hover:bg-blue-100'
-                            }`}
-                        >
-                            Found Items
-                        </button>
-                    </div>
-                </div>
-            </div>
-
-            {/* Main Content */}
-            <div className="w-full px-1 sm:px-2 md:px-4 py-1 sm:py-2 md:py-4">
-                <div className="max-w-6xl mx-auto">
-                    {/* White Container for Items Only */}
-                    <div className="bg-white rounded-lg shadow-lg p-2 sm:p-3 md:p-6 mb-2 sm:mb-4 md:mb-8">
-                        {/* Items Display Section */}
+                    {/* Main Content */}
+                    {/* White Container for All Content */}
+                    <div className="bg-white rounded-lg shadow-lg p-4 md:p-6">
+                        
+                        {/* Items Section */}
+                        {activeMenu === 'items' && (
                         <div>
                             <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 sm:mb-3 md:mb-6 gap-2">
                                 <div>
@@ -322,11 +387,11 @@ function HomePage() {
                                     <p className="text-gray-600 text-xs sm:text-sm md:text-lg">Loading items...</p>
                                 </div>
                             ) : (
-                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 sm:gap-3 md:gap-6 max-h-[400px] sm:max-h-[600px] md:max-h-[900px] overflow-y-auto">
+                                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-1 sm:gap-3 md:gap-6 max-h-[400px] sm:max-h-[600px] md:max-h-[900px] overflow-y-auto pt-2">
                                     {/* Filtered Items */}
                                     {filteredItems.length > 0 ? (
                                         filteredItems.map((item, index) => (
-                                            <div key={index} className="bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 border-4 border-gray-400">
+                                            <div key={index} className="relative bg-white rounded-lg shadow-lg overflow-hidden hover:shadow-xl transition-all duration-300 transform hover:-translate-y-1 hover:z-20 border-4 border-gray-400">
                                                 {/* Item Image */}
                                                 <div className="h-20 sm:h-32 md:h-48 bg-gray-100 flex items-center justify-center relative overflow-hidden">
                                                     {(item.image_path || item.image_url) ? (
@@ -344,135 +409,252 @@ function HomePage() {
                                                         <div className="text-center text-gray-400">
                                                             <div className="text-lg sm:text-4xl mb-1 sm:mb-2">📦</div>
                                                             <p className="text-[10px] sm:text-sm">No Image</p>
-                                                        </div>
-                                                    )}
-                                                    {/* Status Badge */}
-                                                    <div className={`absolute top-0.5 sm:top-1 md:top-2 right-0.5 sm:right-1 md:right-2 px-1 sm:px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-[8px] sm:text-xs font-semibold ${
+                                                            </div>
+                                                        )}
+                                                        {/* Status Badge */}
+                                                        <div className={`absolute top-0.5 sm:top-1 md:top-2 right-0.5 sm:right-1 md:right-2 px-1 sm:px-1.5 md:px-2 py-0.5 md:py-1 rounded-full text-[8px] sm:text-xs font-semibold ${
                                                         item.status === 'claimed'
                                                             ? 'bg-purple-100 text-purple-800'
                                                             : (item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found')
                                                                 ? 'bg-green-100 text-green-800'
                                                                 : 'bg-red-100 text-red-800'
                                                         }`}>
-                                                        {item.status === 'claimed' ? 'Claimed' : (item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') ? 'Found' : 'Lost'}
+                                                            {item.status === 'claimed' ? 'Claimed' : (item.status?.toLowerCase() === 'found' || item.type?.toLowerCase() === 'found') ? 'Found' : 'Lost'}
+                                                        </div>
+                                                        </div>
+
+                                                        {/* Item Details */}
+                                                        <div className="p-3">
+                                                            <h3 className="font-bold text-sm text-gray-800 mb-1 truncate">
+                                                                {item.item_name}
+                                                            </h3>
+                                                            <p className="text-gray-600 text-xs mb-2 overflow-hidden line-clamp-2">
+                                                                {item.description}
+                                                            </p>
+
+                                                            <div className="space-y-1 text-xs text-gray-500">
+                                                                <div className="flex items-center gap-1">
+                                                                    <MapPin className="h-3 w-3 flex-shrink-0" />
+                                                                    <span className="truncate">{item.location}</span>
+                                                                </div>
+                                                                <div className="flex items-center gap-1">
+                                                                    <Calendar className="h-3 w-3 flex-shrink-0" />
+                                                                    <span className="truncate text-xs">{item.date_reported ? new Date(item.date_reported.replace(' ', 'T')).toLocaleDateString('en-US', {
+                                                                        month: 'short',
+                                                                        day: 'numeric',
+                                                                        year: 'numeric'
+                                                                    }) : 'N/A'}</span>
+                                                                </div>
+                                                                {item.reporter_name && (
+                                                                    <div className="flex items-center gap-1">
+                                                                        <User className="h-3 w-3 flex-shrink-0" />
+                                                                        <span className="truncate">{item.type === 'lost' ? 'Lost' : 'Found'} by: {item.reporter_name}</span>
+                                                                    </div>
+                                                                )}
+                                                                {item.status === 'claimed' && item.claimant_name && (
+                                                                    <div className="flex items-center gap-0.5 sm:gap-1 md:gap-2 text-purple-600 font-medium text-[8px] sm:text-xs">
+                                                                        <User className="h-2 w-2 sm:h-3 sm:w-3 md:h-4 md:w-4 flex-shrink-0" />
+                                                                        <span className="truncate">Claimed by: {item.claimant_name}</span>
+                                                                    </div>
+                                                                )}
+                                                            </div>
+
+                                                            <button
+                                                                onClick={() => handleViewDetails(item)}
+                                                                className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
+                                                            >
+                                                                <Eye className="h-4 w-4" />
+                                                                <span>View Details</span>
+                                                            </button>
+                                                        </div>
+                                                    </div>
+                                                ))
+                                            ) : (
+                                                <div className="col-span-2 md:col-span-4 text-center py-8 md:py-12">
+                                                    <div className="text-gray-400 mb-4">
+                                                        <div className="text-4xl md:text-6xl mb-2 md:mb-4">🔍</div>
+                                                        <p className="text-base md:text-xl font-medium text-gray-600">No items found</p>
+                                                        <p className="text-sm md:text-base text-gray-500">Check back later for updates</p>
                                                     </div>
                                                 </div>
-
-                                                {/* Item Details */}
-                                                <div className="p-3">
-                                                    <h3 className="font-bold text-sm text-gray-800 mb-1 truncate">
-                                                        {item.item_name}
-                                                    </h3>
-                                                    <p className="text-gray-600 text-xs mb-2 overflow-hidden line-clamp-2">
-                                                        {item.description}
-                                                    </p>
-
-                                                    <div className="space-y-1 text-xs text-gray-500">
-                                                        <div className="flex items-center gap-1">
-                                                            <MapPin className="h-3 w-3 flex-shrink-0" />
-                                                            <span className="truncate">{item.location}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <Calendar className="h-3 w-3 flex-shrink-0" />
-                                                            <span className="truncate text-xs">{item.date_reported ? new Date(item.date_reported.replace(' ', 'T')).toLocaleDateString('en-US', {
-                                                                month: 'short',
-                                                                day: 'numeric',
-                                                                year: 'numeric'
-                                                            }) : 'N/A'}</span>
-                                                        </div>
-                                                        {item.reporter_name && (
-                                                            <div className="flex items-center gap-1">
-                                                                <User className="h-3 w-3 flex-shrink-0" />
-                                                                <span className="truncate">{item.type === 'lost' ? 'Lost' : 'Found'} by: {item.reporter_name}</span>
-                                                            </div>
-                                                        )}
-                                                        {item.status === 'claimed' && item.claimant_name && (
-                                                            <div className="flex items-center gap-0.5 sm:gap-1 md:gap-2 text-purple-600 font-medium text-[8px] sm:text-xs">
-                                                                <User className="h-2 w-2 sm:h-3 sm:w-3 md:h-4 md:w-4 flex-shrink-0" />
-                                                                <span className="truncate">Claimed by: {item.claimant_name}</span>
-                                                            </div>
-                                                        )}
-                                                    </div>
-
-                                                    <button
-                                                        onClick={() => handleViewDetails(item)}
-                                                        className="w-full mt-2 bg-blue-600 hover:bg-blue-700 text-white py-2 px-3 rounded-lg text-sm font-medium transition-colors flex items-center justify-center gap-2"
-                                                    >
-                                                        <Eye className="h-4 w-4" />
-                                                        <span>View Details</span>
-                                                    </button>
-                                                </div>
-                                            </div>
-                                        ))
-                                    ) : (
-                                        <div className="col-span-2 md:col-span-4 text-center py-8 md:py-12">
-                                            <div className="text-gray-400 mb-4">
-                                                <div className="text-4xl md:text-6xl mb-2 md:mb-4">🔍</div>
-                                                <p className="text-base md:text-xl font-medium text-gray-600">No items found</p>
-                                                <p className="text-sm md:text-base text-gray-500">Check back later for updates</p>
-                                            </div>
-                                        </div>
-                                    )}
+                                            )}
                                 </div>
                             )}
                         </div>
-                    </div>
+                        )}
 
-                    {/* Info Sections - Outside white container with blue background and blur */}
-                    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div className="bg-blue-600/90 backdrop-blur-md border border-blue-500/50 rounded-lg shadow-lg p-4 text-white">
-                            <div className="flex items-center gap-2 mb-3">
-                                <FileText className="h-5 w-5" />
-                                <h2 className="text-lg font-bold">How to Claim Items</h2>
+                        {/* Claim Instructions Section */}
+                        {activeMenu === 'claim-instructions' && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <FileText className="h-6 w-6 text-blue-600" />
+                                <h2 className="text-2xl md:text-3xl font-bold text-blue-700">How to Claim Items</h2>
                             </div>
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                            <div className="space-y-3 max-h-[600px] overflow-y-auto">
                                 {claimInstructions.length > 0 ? (
                                     claimInstructions.map((instruction) => (
-                                        <div key={instruction.id} className="bg-white rounded-lg p-3 border border-blue-200">
-                                            <div className="flex gap-2">
-                                                <div className="flex-shrink-0 w-6 h-6 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-xs">
+                                        <div key={instruction.id} className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-600 hover:shadow-md transition-shadow">
+                                            <div className="flex gap-3">
+                                                <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
                                                     {instruction.step_number}
                                                 </div>
-                                                <div>
-                                                    <h3 className="font-semibold text-blue-800 mb-1 text-sm">{instruction.title}</h3>
-                                                    <p className="text-blue-700 text-xs leading-relaxed">{instruction.description}</p>
+                                                <div className="flex-1">
+                                                    <h3 className="font-semibold text-blue-800 mb-2 text-base md:text-lg">{instruction.title}</h3>
+                                                    <p className="text-blue-700 text-sm md:text-base leading-relaxed">{instruction.description}</p>
                                                 </div>
                                             </div>
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="bg-white rounded-lg p-4 border border-blue-200 text-center">
+                                    <div className="bg-blue-50 rounded-lg p-8 border border-blue-200 text-center">
+                                        <FileText className="h-12 w-12 text-blue-400 mx-auto mb-3" />
                                         <p className="text-blue-600 text-lg font-medium">Loading instructions...</p>
                                     </div>
                                 )}
                             </div>
                         </div>
-                        <div className="bg-blue-600/90 backdrop-blur-md border border-blue-500/50 rounded-lg shadow-lg p-4 text-white">
-                            <h2 className="text-lg font-bold mb-3 flex items-center gap-2">
-                                <Megaphone className="h-5 w-5" />
-                                Announcements
-                            </h2>
-                            <div className="space-y-2 max-h-64 overflow-y-auto">
+                        )}
+
+                        {/* Announcements Section */}
+                        {activeMenu === 'announcements' && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <Megaphone className="h-6 w-6 text-blue-600" />
+                                <h2 className="text-2xl md:text-3xl font-bold text-blue-700">Announcements</h2>
+                            </div>
+                            <div className="space-y-3 max-h-[600px] overflow-y-auto">
                                 {announcements.length > 0 ? (
                                     announcements.map((announcement) => (
-                                        <div key={announcement.id} className="bg-white rounded-lg p-3 border border-blue-200">
-                                            <h3 className="font-semibold text-sm mb-1 text-blue-800">{announcement.title}</h3>
-                                            <p className="text-blue-700 leading-relaxed text-xs">{announcement.content}</p>
-                                            <p className="text-blue-600 text-xs mt-1">
-                                                {new Date(announcement.created_at).toLocaleDateString()}
-                                            </p>
+                                        <div key={announcement.id} className="bg-blue-50 rounded-lg p-4 border-l-4 border-blue-600 hover:shadow-md transition-shadow">
+                                            <h3 className="font-semibold text-base md:text-lg mb-2 text-blue-800">{announcement.title}</h3>
+                                            <p className="text-blue-700 leading-relaxed text-sm md:text-base mb-2">{announcement.content}</p>
+                                            <div className="flex items-center gap-2 text-blue-600 text-xs md:text-sm">
+                                                <Calendar className="h-4 w-4" />
+                                                <span>{new Date(announcement.created_at).toLocaleDateString('en-US', {
+                                                    year: 'numeric',
+                                                    month: 'long',
+                                                    day: 'numeric'
+                                                })}</span>
+                                            </div>
                                         </div>
                                     ))
                                 ) : (
-                                    <div className="bg-white rounded-lg p-3 border border-blue-200 text-center">
-                                        <p className="text-blue-600 text-sm font-medium">No announcements at the moment.</p>
-                                        <p className="text-blue-500 text-xs">Check back later for updates from the administration.</p>
+                                    <div className="bg-blue-50 rounded-lg p-8 border border-blue-200 text-center">
+                                        <Megaphone className="h-12 w-12 text-blue-400 mx-auto mb-3" />
+                                        <p className="text-blue-600 text-lg font-medium">No announcements at the moment.</p>
+                                        <p className="text-blue-500 text-sm mt-2">Check back later for updates from the administration.</p>
                                     </div>
                                 )}
                             </div>
                         </div>
+                        )}
+
+                        {/* About Us Section */}
+                        {activeMenu === 'about' && (
+                        <div>
+                            <div className="flex items-center gap-2 mb-4">
+                                <User className="h-6 w-6 text-blue-600" />
+                                <h2 className="text-2xl md:text-3xl font-bold text-blue-700">About NC iFound</h2>
+                            </div>
+                            <div className="space-y-6">
+                                {/* Mission */}
+                                <div className="bg-blue-50 rounded-lg p-6 border-l-4 border-blue-600">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Building2 className="h-6 w-6 text-blue-600" />
+                                        <h3 className="text-xl font-bold text-blue-800">Our Mission</h3>
+                                    </div>
+                                    <p className="text-blue-700 text-base leading-relaxed">
+                                        NC iFound is Norzagaray College's official Lost and Found Management System, dedicated to helping students, 
+                                        faculty, and staff recover their lost belongings efficiently. We strive to create a secure and organized 
+                                        platform that bridges the gap between those who have lost items and those who have found them.
+                                    </p>
+                                </div>
+
+                                {/* What We Do */}
+                                <div className="bg-blue-50 rounded-lg p-6 border-l-4 border-blue-600">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <FileText className="h-6 w-6 text-blue-600" />
+                                        <h3 className="text-xl font-bold text-blue-800">What We Do</h3>
+                                    </div>
+                                    <div className="space-y-3 text-blue-700 text-base">
+                                        <div className="flex items-start gap-2">
+                                            <span className="text-blue-600 font-bold mt-1">•</span>
+                                            <p className="leading-relaxed">Provide a centralized platform for reporting lost and found items within the campus</p>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                            <span className="text-blue-600 font-bold mt-1">•</span>
+                                            <p className="leading-relaxed">Facilitate easy searching and filtering of items by category, location, and date</p>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                            <span className="text-blue-600 font-bold mt-1">•</span>
+                                            <p className="leading-relaxed">Streamline the claiming process through our Student Council Office</p>
+                                        </div>
+                                        <div className="flex items-start gap-2">
+                                            <span className="text-blue-600 font-bold mt-1">•</span>
+                                            <p className="leading-relaxed">Keep the campus community informed through announcements and updates</p>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* How It Works */}
+                                <div className="bg-blue-50 rounded-lg p-6 border-l-4 border-blue-600">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Search className="h-6 w-6 text-blue-600" />
+                                        <h3 className="text-xl font-bold text-blue-800">How It Works</h3>
+                                    </div>
+                                    <div className="space-y-4">
+                                        <div className="flex gap-3">
+                                            <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                                                1
+                                            </div>
+                                            <div>
+                                                <h4 className="font-semibold text-blue-800 mb-1">Browse Items</h4>
+                                                <p className="text-blue-700 text-sm leading-relaxed">
+                                                    Search through our database of lost and found items using filters and search functionality.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                                                2
+                                            </div>
+                                            <div>
+                                                <h4 className="font-semibold text-blue-800 mb-1">Identify Your Item</h4>
+                                                <p className="text-blue-700 text-sm leading-relaxed">
+                                                    Found something that belongs to you? Click on the item to view detailed information.
+                                                </p>
+                                            </div>
+                                        </div>
+                                        <div className="flex gap-3">
+                                            <div className="flex-shrink-0 w-8 h-8 bg-blue-600 text-white rounded-full flex items-center justify-center font-bold text-sm">
+                                                3
+                                            </div>
+                                            <div>
+                                                <h4 className="font-semibold text-blue-800 mb-1">Visit the Office</h4>
+                                                <p className="text-blue-700 text-sm leading-relaxed">
+                                                    Head to the Student Council Office to claim your item and complete the verification process.
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                </div>
+
+                                {/* Managed By */}
+                                <div className="bg-gradient-to-r from-blue-600 to-blue-700 rounded-lg p-6 text-white">
+                                    <div className="flex items-center gap-2 mb-3">
+                                        <Building2 className="h-6 w-6" />
+                                        <h3 className="text-xl font-bold">Managed By</h3>
+                                    </div>
+                                    <p className="text-blue-50 text-base leading-relaxed">
+                                        NC iFound is proudly managed by the Norzagaray College Student Council, working together to serve 
+                                        the campus community and ensure that lost items find their way back to their rightful owners.
+                                    </p>
+                                </div>
+                            </div>
+                        </div>
+                        )}
+
                     </div>
-                </div>
             </div>
 
             {/* Item Detail Modal */}
