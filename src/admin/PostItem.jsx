@@ -1,8 +1,9 @@
 // src/admin/PostItem.jsx
 import { useState, useEffect } from 'react';
-import { Plus, CheckCircle } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import { API_ENDPOINTS } from '../utils/api';
 import { LOCATION_OPTIONS } from '../utils/constants';
+import { SuccessModal } from '../components/Modals';
 
 function PostItem({ user, onSuccess }) {
     const [categories, setCategories] = useState([]);
@@ -465,25 +466,11 @@ function PostItem({ user, onSuccess }) {
             </div>
 
             {/* Success Modal */}
-            {showSuccessModal && (
-                <div className="fixed inset-0 backdrop-blur-sm flex items-center justify-center z-50">
-                    <div className="bg-white rounded-lg p-6 md:p-8 max-w-sm mx-4 shadow-2xl">
-                        <div className="text-center">
-                            <div className="mx-auto flex items-center justify-center h-16 w-16 rounded-full bg-green-100 mb-4">
-                                <CheckCircle className="h-10 w-10 text-green-600" />
-                            </div>
-                            <h3 className="text-xl font-bold text-gray-900 mb-2">Success!</h3>
-                            <p className="text-gray-600 mb-6">Item posted successfully!</p>
-                            <button
-                                onClick={() => setShowSuccessModal(false)}
-                                className="w-full bg-green-600 hover:bg-green-700 text-white font-semibold py-2 px-4 rounded-lg transition-colors"
-                            >
-                                OK
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            <SuccessModal 
+                show={showSuccessModal}
+                onClose={() => setShowSuccessModal(false)}
+                message="Item posted successfully!"
+            />
         </div>
     );
 }

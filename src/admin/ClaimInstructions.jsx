@@ -1,7 +1,8 @@
 // src/admin/ClaimInstructions.jsx
 import { useState, useEffect } from 'react';
-import { FileText, Plus, Edit, Trash2, Check, X } from 'lucide-react';
+import { FileText, Plus, Edit, Trash2 } from 'lucide-react';
 import { API_ENDPOINTS } from '../utils/api';
+import { SuccessModal, ErrorModal, ConfirmModal } from '../components/Modals';
 
 function ClaimInstructions() {
     const [claimInstructions, setClaimInstructions] = useState([]);
@@ -10,13 +11,12 @@ function ClaimInstructions() {
     const [newInstruction, setNewInstruction] = useState({ title: '', description: '' });
     const [isDeletingId, setIsDeletingId] = useState(null);
 
-    // Modal state
-    const [showModal, setShowModal] = useState(false);
-    const [modalMessage, setModalMessage] = useState('');
-    const [modalType, setModalType] = useState('success');
-
-    // Confirmation modal state
-    const [showConfirmModal, setShowConfirmModal] = useState(false);
+    // Modal states
+    const [showSuccess, setShowSuccess] = useState(false);
+    const [showError, setShowError] = useState(false);
+    const [showConfirm, setShowConfirm] = useState(false);
+    const [successMessage, setSuccessMessage] = useState('');
+    const [errorMessage, setErrorMessage] = useState('');
     const [deleteId, setDeleteId] = useState(null);
 
     useEffect(() => {
@@ -54,22 +54,19 @@ function ClaimInstructions() {
 
             const data = await response.json();
             if (data.success) {
-                setModalMessage('Instruction added successfully!');
-                setModalType('success');
-                setShowModal(true);
+                setSuccessMessage('Instruction added successfully!');
+                setShowSuccess(true);
                 setNewInstruction({ title: '', description: '' });
                 setIsAddingInstruction(false);
                 fetchClaimInstructions();
             } else {
-                setModalMessage('Failed to add instruction: ' + data.message);
-                setModalType('error');
-                setShowModal(true);
+                setErrorMessage('Failed to add instruction: ' + data.message);
+                setShowError(true);
             }
         } catch (error) {
             console.error('Error adding instruction:', error);
-            setModalMessage('Error adding instruction');
-            setModalType('error');
-            setShowModal(true);
+            setErrorMessage('Error adding instruction');
+            setShowError(true);
         }
     };
 
@@ -88,31 +85,27 @@ function ClaimInstructions() {
 
             const data = await response.json();
             if (data.success) {
-                setModalMessage('Instruction updated successfully!');
-                setModalType('success');
-                setShowModal(true);
+                setSuccessMessage('Instruction updated successfully!');
+                setShowSuccess(true);
                 setEditingInstruction(null);
                 fetchClaimInstructions();
             } else {
-                setModalMessage('Failed to update instruction: ' + data.message);
-                setModalType('error');
-                setShowModal(true);
+                setErrorMessage('Failed to update instruction: ' + data.message);
+                setShowError(true);
             }
         } catch (error) {
             console.error('Error updating instruction:', error);
-            setModalMessage('Error updating instruction');
-            setModalType('error');
-            setShowModal(true);
+            setErrorMessage('Error updating instruction');
+            setShowError(true);
         }
     };
 
     const handleDeleteClick = (id) => {
         setDeleteId(id);
-        setShowConfirmModal(true);
+        setShowConfirm(true);
     };
 
     const handleDeleteInstruction = async () => {
-        setShowConfirmModal(false);
         setIsDeletingId(deleteId);
         try {
             const response = await fetch(API_ENDPOINTS.CLAIM_INSTRUCTIONS.DELETE(deleteId), {
@@ -121,20 +114,17 @@ function ClaimInstructions() {
 
                 const data = await response.json();
                 if (data.success) {
-                    setModalMessage('Instruction deleted successfully!');
-                    setModalType('success');
-                    setShowModal(true);
+                    setSuccessMessage('Instruction deleted successfully!');
+                    setShowSuccess(true);
                     fetchClaimInstructions();
                 } else {
-                    setModalMessage('Failed to delete instruction: ' + data.message);
-                    setModalType('error');
-                    setShowModal(true);
+                    setErrorMessage('Failed to delete instruction: ' + data.message);
+                    setShowError(true);
                 }
             } catch (error) {
                 console.error('Error deleting instruction:', error);
-                setModalMessage('Error deleting instruction');
-                setModalType('error');
-                setShowModal(true);
+                setErrorMessage('Error deleting instruction');
+                setShowError(true);
             } finally {
                 setIsDeletingId(null);
                 setDeleteId(null);
@@ -301,71 +291,30 @@ function ClaimInstructions() {
                 </div>
             </div>
 
-            {/* Confirmation Modal */}
-            {showConfirmModal && (
-                <div className="fixed inset-0 backdrop-blur-md z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }} onClick={() => setShowConfirmModal(false)}>
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-start justify-between mb-4">
-                            <h3 className="text-xl font-bold text-red-700">Confirm Delete</h3>
-                            <button
-                                onClick={() => setShowConfirmModal(false)}
-                                className="text-gray-600 hover:text-gray-800 transition-colors p-1 hover:bg-gray-100 rounded"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="mb-6">
-                            <p className="text-gray-700 leading-relaxed">Are you sure you want to delete this instruction?</p>
-                        </div>
-                        <div className="flex justify-end gap-3">
-                            <button
-                                onClick={() => setShowConfirmModal(false)}
-                                className="px-6 py-2 bg-gray-600 hover:bg-gray-700 text-white rounded-lg transition-colors font-medium"
-                            >
-                                Cancel
-                            </button>
-                            <button
-                                onClick={handleDeleteInstruction}
-                                className="px-6 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors font-medium"
-                            >
-                                Delete
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Success Modal */}
+            <SuccessModal 
+                show={showSuccess}
+                onClose={() => setShowSuccess(false)}
+                message={successMessage}
+            />
 
-            {/* Message Modal */}
-            {showModal && (
-                <div className="fixed inset-0 backdrop-blur-md z-50 flex items-center justify-center p-4" style={{ backgroundColor: 'rgba(0, 0, 0, 0.3)' }} onClick={() => setShowModal(false)}>
-                    <div className="bg-white rounded-xl shadow-2xl max-w-md w-full p-6" onClick={(e) => e.stopPropagation()}>
-                        <div className="flex items-start justify-between mb-4">
-                            <h3 className={`text-xl font-bold ${modalType === 'success' ? 'text-green-700' : 'text-red-700'}`}>
-                                {modalType === 'success' ? 'Success' : 'Error'}
-                            </h3>
-                            <button
-                                onClick={() => setShowModal(false)}
-                                className="text-gray-600 hover:text-gray-800 transition-colors p-1 hover:bg-gray-100 rounded"
-                            >
-                                <X className="w-5 h-5" />
-                            </button>
-                        </div>
-                        <div className="mb-6">
-                            <p className="text-gray-700 leading-relaxed">{modalMessage}</p>
-                        </div>
-                        <div className="flex justify-end">
-                            <button
-                                onClick={() => setShowModal(false)}
-                                className={`px-6 py-2 rounded-lg transition-colors font-medium text-white ${
-                                    modalType === 'success' ? 'bg-green-600 hover:bg-green-700' : 'bg-red-600 hover:bg-red-700'
-                                }`}
-                            >
-                                OK
-                            </button>
-                        </div>
-                    </div>
-                </div>
-            )}
+            {/* Error Modal */}
+            <ErrorModal 
+                show={showError}
+                onClose={() => setShowError(false)}
+                message={errorMessage}
+            />
+
+            {/* Confirm Modal */}
+            <ConfirmModal 
+                show={showConfirm}
+                onClose={() => setShowConfirm(false)}
+                onConfirm={handleDeleteInstruction}
+                title="Confirm Delete"
+                message="Are you sure you want to delete this instruction? This action cannot be undone."
+                confirmText="Delete"
+                type="danger"
+            />
         </div>
     );
 }

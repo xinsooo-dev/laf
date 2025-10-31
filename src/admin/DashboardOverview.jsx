@@ -1,6 +1,7 @@
 // src/admin/DashboardOverview.jsx
 import { Package, MapPin, Calendar, User, Eye } from 'lucide-react';
 import { getAssetUrl } from '../utils/api';
+import LoadingSpinner from '../components/LoadingSpinner';
 
 function DashboardOverview({ stats, loading, activityFilter, setActivityFilter, setActiveTab }) {
     return (
@@ -74,12 +75,7 @@ function DashboardOverview({ stats, loading, activityFilter, setActivityFilter, 
                                     : activeRecentActivity.filter(activity => activity.type === activityFilter);
 
                                 if (loading) {
-                                    return (
-                                        <div className="flex items-center justify-center py-8">
-                                            <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                                            <span className="ml-2 text-gray-600">Loading recent activity...</span>
-                                        </div>
-                                    );
+                                    return <LoadingSpinner message="Loading recent activity..." />;
                                 }
 
                                 if (filteredActivity.length === 0) {
@@ -193,10 +189,7 @@ function DashboardOverview({ stats, loading, activityFilter, setActivityFilter, 
                     <h3 className="text-lg font-bold text-blue-900 mb-4">Most Common Lost Items</h3>
                     <div className="space-y-3">
                         {loading ? (
-                            <div className="text-center py-4">
-                                <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600 mx-auto"></div>
-                                <span className="text-sm text-gray-500 mt-2">Loading...</span>
-                            </div>
+                            <LoadingSpinner message="Loading..." size="small" />
                         ) : (stats.most_common_lost || []).length === 0 ? (
                             <div className="text-center py-4 text-gray-500">
                                 <span className="text-sm">No lost items data available</span>

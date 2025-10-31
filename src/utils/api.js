@@ -1,5 +1,5 @@
 // API Configuration for Lost and Found System
-// This file centralizes all API endpoint configurations
+// For all API endpoints
 
 // Use environment variable for API base URL
 const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost/ifound%20project/backend/api';
